@@ -24,7 +24,7 @@ compile_logpmf_cs_bip <- function(
     net0 = NULL,
     net_step_fun = net_add_event,
     model_cache = NULL,
-    eps = 1e-12 #
+    eps = 1e-12
 ) {
   stopifnot(is.list(events))
   stopifnot(is.character(formula_rhs), length(formula_rhs) == 1L, nzchar(formula_rhs))
@@ -148,14 +148,10 @@ compile_logpmf_cs_bip <- function(
       stop("compile_logpmf_cs_bip(): missing idx mapping for candidate nodes.", call. = FALSE)
     }
 
-    ## ERNM model + change stats
-    ## Don't reuse model_cache for cs_bip with large networks; rebuild each time
-    res_mdl <- .cs_get_model(net2, formula_rhs = formula_rhs, model_cache = NULL)
+    # ERNM model + change stats
+    res_mdl <- .cs_get_model(net2, formula_rhs = formula_rhs, model_cache = model_cache)
     mdl <- res_mdl$mdl
-    ## Don't update model_cache; always create fresh
-    ## res_mdl <- .cs_get_model(net2, formula_rhs = formula_rhs, model_cache = model_cache)
-    ## mdl <- res_mdl$mdl
-    ## model_cache <- res_mdl$model_cache
+    model_cache <- res_mdl$model_cache
 
     C <- mdl$computeChangeStats(as.integer(tail_idx), as.integer(head_idx))
     if (!is.matrix(C)) C <- as.matrix(C)
