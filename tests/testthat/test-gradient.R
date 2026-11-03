@@ -1,21 +1,6 @@
 # Analytic gradients are checked against central differences of the
-# likelihood itself, on the natural scale.
-
-num_grad <- function(f, p, nms, h = 1e-5) {
-  vapply(nms, function(nm) {
-    up <- p; dn <- p
-    up[[nm]] <- p[[nm]] + h
-    dn[[nm]] <- p[[nm]] - h
-    (f(up) - f(dn)) / (2 * h)
-  }, numeric(1))
-}
-
-check_grad <- function(ll_fn, p, tol = 1e-5) {
-  g <- attr(ll_fn(p, gradient = TRUE), "gradient")
-  expect_false(is.null(g))
-  expect_setequal(names(g), names(p))
-  expect_equal(g[names(p)], num_grad(ll_fn, p, names(p)), tolerance = tol)
-}
+# likelihood itself, on the natural scale (num_grad() and check_grad() are in
+# helper-brute.R).
 
 test_that("BA gradient matches central differences", {
   set.seed(51)

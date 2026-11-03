@@ -1,14 +1,16 @@
 // attach_sim.cpp
 //
 // Stateful simulator of attachment marks (see R/attachment.R). Old perps join
-// an event independently with p_v = 1 - exp(-m w_v / W). Equivalently, draw
-// H ~ Poisson(m) hits and give each hit to perp v with probability w_v / W;
-// a perp joins if it gets at least one hit. The decay exp(-beta_e t) is common
-// to all weights and cancels from w_v / W, so each perp's sampling weight
-//   s_v = u_v (d_v + delta) exp(theta x_v) exp(beta_e (last_v - t_ref))
-// changes only when its own state does, and is kept in a Fenwick tree. Each
-// event then costs O((m + changes) log n_perps). Random numbers come from R,
-// so set.seed() makes runs reproducible.
+// an event independently with p_v = 1 - exp(-u_v m w_v / W), where u_v is the
+// perp's frailty (1 without frailty) and W = sum of w over old perps, without
+// frailty. Equivalently, draw H ~ Poisson(m sum_v u_v w_v / W) hits and give
+// each hit to perp v with probability u_v w_v / sum_u u_u w_u; a perp joins
+// if it gets at least one hit. The decay exp(-beta_e t) is common to all
+// weights and cancels from both ratios, so each perp's weight
+//   w_v = (d_v + delta) exp(theta x_v) exp(beta_e (last_v - t_ref))
+// changes only when its own state does. w and u w are kept in Fenwick trees,
+// so each event costs O((m + changes) log n_perps). Random numbers come from
+// R, so set.seed() makes runs reproducible.
 
 #include <Rcpp.h>
 #include <cmath>
@@ -68,7 +70,7 @@ struct AttachSim {
   // perp state
   std::vector<double> u, last;
   std::vector<int> deg, x;
-  Fenwick s;
+  Fenwick s, s0;  // u w for sampling, w for W
   double t_ref;
   std::unordered_map<long long, double> tie;
   typedef std::pair<double, long long> Expiry;
@@ -78,8 +80,13 @@ struct AttachSim {
 
   double weight(int v) const {
     const double h = log1p_scale ? std::log1p((double)x[v]) : (double)x[v];
-    return u[v] * (use_degree ? deg[v] + delta : 1.0) * (use_cof ? std::exp(theta * h) : 1.0) *
+    return (use_degree ? deg[v] + delta : 1.0) * (use_cof ? std::exp(theta * h) : 1.0) *
       std::exp(beta_e * (last[v] - t_ref));
+  }
+  void update(int v) {
+    const double w = weight(v);
+    s0.set(v, w);
+    s.set(v, u[v] * w);
   }
   static long long key(int a, int b) {
     return ((long long)std::min(a, b) << 32) | (long long)std::max(a, b);
@@ -130,7 +137,11 @@ List attach_sim_step(SEXP ptr, double t) {
   // Keep exp(beta_e (last - t_ref)) bounded by moving the reference time.
   if (S.beta_e * (t - S.t_ref) > 300.0) {
     S.t_ref = t;
-    for (int v = 0; v < n_old; ++v) S.s.value[v] = S.weight(v);
+    for (int v = 0; v < n_old; ++v) {
+      S.s0.value[v] = S.weight(v);
+      S.s.value[v] = S.u[v] * S.s0.value[v];
+    }
+    S.s0.rebuild();
     S.s.rebuild();
   }
 
@@ -156,13 +167,13 @@ List attach_sim_step(SEXP ptr, double t) {
     touch(hi);
     S.tie.erase(it);
   }
-  for (size_t a = 0; a < changed.size(); ++a) S.s.set(changed[a], S.weight(changed[a]));
+  for (size_t a = 0; a < changed.size(); ++a) S.update(changed[a]);
 
-  // Old perps: Poisson(m) hits spread in proportion to the weights.
+  // Old perps: Poisson(m sum u w / W) hits spread in proportion to u w.
   std::vector<int> joined;
   if (n_old > 0) {
-    const double W = S.s.total();
-    const int hits = W > 0.0 ? (int)R::rpois(S.m) : 0;
+    const double W = S.s.total(), W0 = S.s0.total();
+    const int hits = W > 0.0 && W0 > 0.0 ? (int)R::rpois(S.m * W / W0) : 0;
     ++S.stamp_id;
     for (int h = 0; h < hits; ++h) {
       const int v = S.s.find(R::unif_rand() * W);
@@ -184,6 +195,7 @@ List attach_sim_step(SEXP ptr, double t) {
     S.x.push_back(0);
     S.stamp.push_back(-1);
     S.s.push(0.0);
+    S.s0.push(0.0);
   }
 
   // Attendance, recency and ties among everyone at the event.
@@ -208,7 +220,7 @@ List attach_sim_step(SEXP ptr, double t) {
       if (std::isfinite(S.window)) S.expiries.push(AttachSim::Expiry(t + S.window, k));
     }
   }
-  for (size_t a = 0; a < changed.size(); ++a) S.s.set(changed[a], S.weight(changed[a]));
+  for (size_t a = 0; a < changed.size(); ++a) S.update(changed[a]);
 
   return List::create(_["joined"] = wrap(joined), _["n_new"] = n_new);
 }

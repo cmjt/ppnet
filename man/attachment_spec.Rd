@@ -10,7 +10,9 @@ attachment_spec(
   coffender_scale = c("log1p", "linear"),
   coffender_window = Inf,
   new_perps = c("poisson", "negbin"),
-  min_perps = 0
+  min_perps = 0,
+  frailty = FALSE,
+  frailty_nodes = 8L
 )
 }
 \arguments{
@@ -29,6 +31,12 @@ or \code{"negbin"}.}
 
 \item{min_perps}{\code{0} (default) allows events with no perps; \code{1} requires at
 least one, as in observed data, and adds \code{lambda_new0}.}
+
+\item{frailty}{Logical; give each perp a gamma frailty with variance
+\code{frailty_var}.}
+
+\item{frailty_nodes}{Gauss-Legendre nodes per panel for the frailty
+integrals.}
 }
 \value{
 An object of class \code{attachment_spec}.
@@ -55,10 +63,22 @@ have \eqn{1 +} \code{new_perps}(\code{lambda_new0}). \code{"negbin"} uses mean
 \code{lambda_new} and size \code{size_new}, so the variance is
 \eqn{\lambda + \lambda^2 / \text{size}}.
 
+With \code{frailty = TRUE} each perp also has a fixed propensity
+\eqn{u_v \sim \text{Gamma}(1/\sigma^2, 1/\sigma^2)} (mean 1, variance
+\eqn{\sigma^2} = \code{frailty_var}) that multiplies its rate,
+\eqn{p_v = 1 - \exp(-u_v m w_v / W)}, with \eqn{W} still the sum of the
+weights without frailty. This separates perps who return often for their
+own reasons from the effects of attendance and co-offending. \eqn{u_v} is
+integrated out of the likelihood perp by perp: exactly for perps that
+never return, and otherwise by quadrature in \eqn{\log u_v} over the range
+that holds the integrand, located from its mode (Gauss-Legendre panels of
+\code{frailty_nodes} nodes, widening away from the mode). The cost stays linear in events and joins. \code{frailty_var = 0} gives the model without
+frailty exactly.
+
 Parameters: \code{m}, \code{beta_edges} (\eqn{\beta_e}), \code{delta} (if \code{degree}) and
 \code{theta} (if \code{coffenders}), then \code{lambda_new}, \code{lambda_new0} (if
-\code{min_perps = 1}) and \code{size_new} (if \code{"negbin"}); see
-\code{\link[=attachment_param_names]{attachment_param_names()}}. With \code{degree = FALSE} and \code{coffenders = FALSE}
+\code{min_perps = 1}), \code{size_new} (if \code{"negbin"}) and \code{frailty_var} (if
+\code{frailty}); see \code{\link[=attachment_param_names]{attachment_param_names()}}. With \code{degree = FALSE} and \code{coffenders = FALSE}
 the weights depend on recency only.
 
 Since \eqn{\sum_v m w_v / W = m}, each evaluation needs only the running

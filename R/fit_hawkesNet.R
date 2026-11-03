@@ -153,6 +153,9 @@ fit_hawkesNet <- function(events,
   # Derive which parameters are free using fixed_params
   fixed_params <- intersect(fixed_params, names(params_init))
   free_params <- setdiff(names(params_init), fixed_params)
+  # Fixed parameters are never optimised, so they can sit on a boundary
+  # (e.g. frailty_var = 0) that their working-scale transform excludes.
+  transform[fixed_params] <- "none"
 
 
   # Build the compiled likelihood function ONCE (optim() will call the objective

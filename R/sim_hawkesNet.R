@@ -17,11 +17,13 @@
 #' @param attachment Optional [attachment_spec()] for which old perps join
 #'   each event (`mark_type = "ba_bip"` only); its parameters go in `params`.
 #' @param kernel `"exp"` or `"exp2"`; see [loglik()].
-#' @param frailty_shape With `attachment` only: finite values give each perp
-#'   a fixed propensity \eqn{u \sim \text{Gamma}(\text{shape}, \text{shape})}
-#'   (mean 1, variance 1 / shape) multiplying its attachment weight. The
-#'   likelihood has no such term, so this simulates unmodelled differences
-#'   between perps, e.g. to check what the co-offender effect picks up.
+#' @param frailty_shape With an `attachment` spec without `frailty` only:
+#'   finite values give each perp a fixed propensity
+#'   \eqn{u \sim \text{Gamma}(\text{shape}, \text{shape})} (mean 1, variance
+#'   1 / shape) multiplying its join rate, as `frailty_var` does in a spec with
+#'   `frailty = TRUE`. The fitted model then has no such term, so this
+#'   simulates unmodelled differences between perps, e.g. to check what the
+#'   co-offender effect picks up.
 #' @param return_net Logical; also return the final `network` object. With
 #'   `attachment` it is built once at the end, which is slow for long
 #'   histories, so set `FALSE` when only `ev` is needed.

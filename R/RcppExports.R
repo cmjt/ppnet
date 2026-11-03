@@ -13,8 +13,8 @@ attach_history_cpp <- function(t, node_ptr, edge_ptr, edge_i, edge_j, focal, n_n
     .Call(`_ppnet_attach_history_cpp`, t, node_ptr, edge_ptr, edge_i, edge_j, focal, n_nodes, window)
 }
 
-attach_ll_cpp <- function(t, upd_ptr, upd_node, upd_deg, upd_last, upd_feat, obs_ptr, obs_node, n_nodes, m, beta, delta, theta, use_degree) {
-    .Call(`_ppnet_attach_ll_cpp`, t, upd_ptr, upd_node, upd_deg, upd_last, upd_feat, obs_ptr, obs_node, n_nodes, m, beta, delta, theta, use_degree)
+attach_ll_cpp <- function(t, upd_ptr, upd_node, upd_deg, upd_last, upd_feat, obs_ptr, obs_node, n_nodes, m, beta, delta, theta, use_degree, frailty_var, gl_x, gl_w) {
+    .Call(`_ppnet_attach_ll_cpp`, t, upd_ptr, upd_node, upd_deg, upd_last, upd_feat, obs_ptr, obs_node, n_nodes, m, beta, delta, theta, use_degree, frailty_var, gl_x, gl_w)
 }
 
 mark_ll_attach_cpp <- function(t, node_ptr, node_cand, node_birth, edge_ptr, edge_i, edge_j, focal, beta_edges, delta, eps) {

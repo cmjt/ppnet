@@ -36,11 +36,13 @@ each event (\code{mark_type = "ba_bip"} only); its parameters go in \code{params
 
 \item{kernel}{\code{"exp"} or \code{"exp2"}; see \code{\link[=loglik]{loglik()}}.}
 
-\item{frailty_shape}{With \code{attachment} only: finite values give each perp
-a fixed propensity \eqn{u \sim \text{Gamma}(\text{shape}, \text{shape})}
-(mean 1, variance 1 / shape) multiplying its attachment weight. The
-likelihood has no such term, so this simulates unmodelled differences
-between perps, e.g. to check what the co-offender effect picks up.}
+\item{frailty_shape}{With an \code{attachment} spec without \code{frailty} only:
+finite values give each perp a fixed propensity
+\eqn{u \sim \text{Gamma}(\text{shape}, \text{shape})} (mean 1, variance
+1 / shape) multiplying its join rate, as \code{frailty_var} does in a spec with
+\code{frailty = TRUE}. The fitted model then has no such term, so this
+simulates unmodelled differences between perps, e.g. to check what the
+co-offender effect picks up.}
 
 \item{return_net}{Logical; also return the final \code{network} object. With
 \code{attachment} it is built once at the end, which is slow for long

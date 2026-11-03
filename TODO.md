@@ -30,22 +30,24 @@
 
 ## Model extensions
 
-- [ ] **Individual effects (M4).** Needed: the `theta` check shows frailty alone
-  produces a significant `theta`. Proposed design, awaiting a decision:
-  - Gamma frailty `u_v ~ Gamma(1/sigma2, 1/sigma2)` per perp, integrated out.
-  - Joins as Poisson "hits": `y_vk ~ Poisson(u_v q_vk)`, `q_vk = m w_vk / W_k`
-    with `W_k` from the frailty-free weights, so `E[sum_v q] = m` as before.
-    Then each perp's marginal likelihood is closed form (negative binomial
-    type) in its returns and `Q_v = sum_k q_vk` over events where it is a
-    candidate.
-  - `Q_v` is linear-time: between changes of `v`'s state,
-    `q_vk = m c_v e^{beta last_v} e^{-beta t_k} / W_k`, so it needs only
-    prefix sums of `e^{-beta t_k} / W_k` over events.
-  - Cost of the Poisson form: a join is treated as one hit, which is accurate
-    when `q` is small (most perps at most events) but not exact. The exact
-    `1 - exp(-u q)` form needs inclusion-exclusion over each perp's joins,
-    exponential in its number of returns.
-  - The simulator would use the same normalisation (frailty outside `W`).
+- [x] **Individual effects (M4).** `attachment_spec(frailty = TRUE)` adds
+  `frailty_var`: each perp has `u_v ~ Gamma(1/sigma2, 1/sigma2)` and joins
+  with `1 - exp(-u_v q_vk)`, `q_vk = m w_vk / W_k`, with `W_k` from the
+  frailty-free weights. `u_v` is integrated out per perp:
+  - `Q_v = sum_k q_vk` over the events where `v` is a candidate is linear-time
+    from suffix sums of `exp(-beta t_k) / W_k` within reference-time epochs
+    (prefix sums lost late stretches to cancellation).
+  - Perps that never return are closed form. For the others the integral in
+    `log u` uses the exact join probabilities: Newton for the mode (the log
+    integrand is concave), then Gauss-Legendre panels widening away from it.
+  - The Poisson-hit closed form first proposed was dropped: it cannot give a
+    join probability near 1, so for prolific perps it made `theta` worse
+    (1.55 against 0.22 without frailty, truth 0).
+  - `frailty_var = 0` (or below 1e-8) is the model without frailty, so it can
+    be tested by a likelihood ratio (on the boundary: halve the chi-squared(1)
+    p-value) with `fixed_params = "frailty_var"`.
+  - The simulator uses the same model (`frailty_var` in a frailty spec, or
+    `frailty_shape` for a frailty the fitted model ignores).
 - [x] **Comparison tools.** `compare_fits()` for nested likelihood-ratio tests and
   AIC/BIC tables, replacing the hand-written comparisons.
 - [x] **Temporal diagnostics.** `R/diagnostics_temporal.R` still assumes a

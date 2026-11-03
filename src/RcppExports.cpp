@@ -60,8 +60,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // attach_ll_cpp
-NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr, IntegerVector upd_node, IntegerVector upd_deg, NumericVector upd_last, NumericVector upd_feat, IntegerVector obs_ptr, IntegerVector obs_node, int n_nodes, double m, double beta, double delta, double theta, bool use_degree);
-RcppExport SEXP _ppnet_attach_ll_cpp(SEXP tSEXP, SEXP upd_ptrSEXP, SEXP upd_nodeSEXP, SEXP upd_degSEXP, SEXP upd_lastSEXP, SEXP upd_featSEXP, SEXP obs_ptrSEXP, SEXP obs_nodeSEXP, SEXP n_nodesSEXP, SEXP mSEXP, SEXP betaSEXP, SEXP deltaSEXP, SEXP thetaSEXP, SEXP use_degreeSEXP) {
+NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr, IntegerVector upd_node, IntegerVector upd_deg, NumericVector upd_last, NumericVector upd_feat, IntegerVector obs_ptr, IntegerVector obs_node, int n_nodes, double m, double beta, double delta, double theta, bool use_degree, double frailty_var, NumericVector gl_x, NumericVector gl_w);
+RcppExport SEXP _ppnet_attach_ll_cpp(SEXP tSEXP, SEXP upd_ptrSEXP, SEXP upd_nodeSEXP, SEXP upd_degSEXP, SEXP upd_lastSEXP, SEXP upd_featSEXP, SEXP obs_ptrSEXP, SEXP obs_nodeSEXP, SEXP n_nodesSEXP, SEXP mSEXP, SEXP betaSEXP, SEXP deltaSEXP, SEXP thetaSEXP, SEXP use_degreeSEXP, SEXP frailty_varSEXP, SEXP gl_xSEXP, SEXP gl_wSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -79,7 +79,10 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type delta(deltaSEXP);
     Rcpp::traits::input_parameter< double >::type theta(thetaSEXP);
     Rcpp::traits::input_parameter< bool >::type use_degree(use_degreeSEXP);
-    rcpp_result_gen = Rcpp::wrap(attach_ll_cpp(t, upd_ptr, upd_node, upd_deg, upd_last, upd_feat, obs_ptr, obs_node, n_nodes, m, beta, delta, theta, use_degree));
+    Rcpp::traits::input_parameter< double >::type frailty_var(frailty_varSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type gl_x(gl_xSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type gl_w(gl_wSEXP);
+    rcpp_result_gen = Rcpp::wrap(attach_ll_cpp(t, upd_ptr, upd_node, upd_deg, upd_last, upd_feat, obs_ptr, obs_node, n_nodes, m, beta, delta, theta, use_degree, frailty_var, gl_x, gl_w));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -146,7 +149,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_ppnet_attach_sim_new", (DL_FUNC) &_ppnet_attach_sim_new, 9},
     {"_ppnet_attach_sim_step", (DL_FUNC) &_ppnet_attach_sim_step, 2},
     {"_ppnet_attach_history_cpp", (DL_FUNC) &_ppnet_attach_history_cpp, 8},
-    {"_ppnet_attach_ll_cpp", (DL_FUNC) &_ppnet_attach_ll_cpp, 14},
+    {"_ppnet_attach_ll_cpp", (DL_FUNC) &_ppnet_attach_ll_cpp, 17},
     {"_ppnet_mark_ll_attach_cpp", (DL_FUNC) &_ppnet_mark_ll_attach_cpp, 11},
     {"_ppnet_event_summary_cpp", (DL_FUNC) &_ppnet_event_summary_cpp, 8},
     {"_ppnet_time_ll_cpp", (DL_FUNC) &_ppnet_time_ll_cpp, 9},

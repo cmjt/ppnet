@@ -67,3 +67,20 @@ local_min_one_perp <- function(env = parent.frame()) {
     .env = env
   )
 }
+
+# Central differences of f on the natural scale.
+num_grad <- function(f, p, nms, h = 1e-5) {
+  vapply(nms, function(nm) {
+    up <- p; dn <- p
+    up[[nm]] <- p[[nm]] + h
+    dn[[nm]] <- p[[nm]] - h
+    (f(up) - f(dn)) / (2 * h)
+  }, numeric(1))
+}
+
+check_grad <- function(ll_fn, p, tol = 1e-5) {
+  g <- attr(ll_fn(p, gradient = TRUE), "gradient")
+  expect_false(is.null(g))
+  expect_setequal(names(g), names(p))
+  expect_equal(g[names(p)], num_grad(ll_fn, p, names(p)), tolerance = tol)
+}

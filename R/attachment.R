@@ -22,10 +22,22 @@
 #' `lambda_new` and size `size_new`, so the variance is
 #' \eqn{\lambda + \lambda^2 / \text{size}}.
 #'
+#' With `frailty = TRUE` each perp also has a fixed propensity
+#' \eqn{u_v \sim \text{Gamma}(1/\sigma^2, 1/\sigma^2)} (mean 1, variance
+#' \eqn{\sigma^2} = `frailty_var`) that multiplies its rate,
+#' \eqn{p_v = 1 - \exp(-u_v m w_v / W)}, with \eqn{W} still the sum of the
+#' weights without frailty. This separates perps who return often for their
+#' own reasons from the effects of attendance and co-offending. \eqn{u_v} is
+#' integrated out of the likelihood perp by perp: exactly for perps that
+#' never return, and otherwise by quadrature in \eqn{\log u_v} over the range
+#' that holds the integrand, located from its mode (Gauss-Legendre panels of
+#' `frailty_nodes` nodes, widening away from the mode). The cost stays linear in events and joins. `frailty_var = 0` gives the model without
+#' frailty exactly.
+#'
 #' Parameters: `m`, `beta_edges` (\eqn{\beta_e}), `delta` (if `degree`) and
 #' `theta` (if `coffenders`), then `lambda_new`, `lambda_new0` (if
-#' `min_perps = 1`) and `size_new` (if `"negbin"`); see
-#' [attachment_param_names()]. With `degree = FALSE` and `coffenders = FALSE`
+#' `min_perps = 1`), `size_new` (if `"negbin"`) and `frailty_var` (if
+#' `frailty`); see [attachment_param_names()]. With `degree = FALSE` and `coffenders = FALSE`
 #' the weights depend on recency only.
 #'
 #' Since \eqn{\sum_v m w_v / W = m}, each evaluation needs only the running
@@ -42,13 +54,18 @@
 #'   or `"negbin"`.
 #' @param min_perps `0` (default) allows events with no perps; `1` requires at
 #'   least one, as in observed data, and adds `lambda_new0`.
+#' @param frailty Logical; give each perp a gamma frailty with variance
+#'   `frailty_var`.
+#' @param frailty_nodes Gauss-Legendre nodes per panel for the frailty
+#'   integrals.
 #'
 #' @return An object of class `attachment_spec`.
 #' @export
 attachment_spec <- function(degree = TRUE, coffenders = FALSE,
                             coffender_scale = c("log1p", "linear"),
                             coffender_window = Inf,
-                            new_perps = c("poisson", "negbin"), min_perps = 0) {
+                            new_perps = c("poisson", "negbin"), min_perps = 0,
+                            frailty = FALSE, frailty_nodes = 8L) {
   coffender_scale <- match.arg(coffender_scale)
   new_perps <- match.arg(new_perps)
   if (!(length(min_perps) == 1L && min_perps %in% c(0, 1))) {
@@ -58,7 +75,8 @@ attachment_spec <- function(degree = TRUE, coffenders = FALSE,
   structure(
     list(degree = isTRUE(degree), coffenders = isTRUE(coffenders),
          coffender_scale = coffender_scale, coffender_window = coffender_window,
-         new_perps = new_perps, min_perps = as.integer(min_perps)),
+         new_perps = new_perps, min_perps = as.integer(min_perps),
+         frailty = isTRUE(frailty), frailty_nodes = as.integer(frailty_nodes)),
     class = "attachment_spec"
   )
 }
@@ -71,7 +89,8 @@ attachment_spec <- function(degree = TRUE, coffenders = FALSE,
 attachment_param_names <- function(spec) {
   if (is.null(spec)) return(character(0))
   c("m", "beta_edges", if (spec$degree) "delta", if (spec$coffenders) "theta", "lambda_new",
-    if (spec$min_perps == 1L) "lambda_new0", if (spec$new_perps == "negbin") "size_new")
+    if (spec$min_perps == 1L) "lambda_new0", if (spec$new_perps == "negbin") "size_new",
+    if (isTRUE(spec$frailty)) "frailty_var")
 }
 
 # Internal: log-likelihood of the new-perp counts given the old-perp counts,
@@ -120,6 +139,7 @@ compile_logpmf_attach <- function(events, spec) {
                                                  f$focal, length(a$ids), spec$coffender_window)
   feat <- if (spec$coffenders && !invalid) .coffender_feature(spec, h$upd_x) else numeric(length(h$upd_x))
   n_old <- if (invalid) integer(0) else diff(h$obs_ptr)
+  gl <- .gauss_legendre(spec$frailty_nodes %||% 8L)
 
   # With `gradient = TRUE` the value carries attribute "gradient".
   function(params, gradient = FALSE) {
@@ -131,21 +151,23 @@ compile_logpmf_attach <- function(events, spec) {
     lambda_new <- get("lambda_new", NA_real_)
     lambda_new0 <- if (spec$min_perps == 1L) get("lambda_new0", NA_real_) else 1
     size_new <- if (spec$new_perps == "negbin") get("size_new", NA_real_) else 1
+    frailty_var <- if (isTRUE(spec$frailty)) get("frailty_var", NA_real_) else 0
 
     ok <- function(x) is.numeric(x) && length(x) == 1L && is.finite(x)
     if (!ok(m) || m <= 0 || !ok(beta_edges) || beta_edges < 0 || !ok(lambda_new) || lambda_new < 0 ||
         !ok(delta) || delta <= 0 && spec$degree || !ok(theta) ||
-        !ok(lambda_new0) || lambda_new0 < 0 || !ok(size_new) || size_new <= 0) return(-Inf)
+        !ok(lambda_new0) || lambda_new0 < 0 || !ok(size_new) || size_new <= 0 ||
+        !ok(frailty_var) || frailty_var < 0) return(-Inf)
     if (invalid) return(-Inf)
 
     r <- attach_ll_cpp(a$t, h$upd_ptr, h$upd_node, h$upd_deg, h$upd_last, feat,
                        h$obs_ptr, h$obs_node, length(a$ids), m, beta_edges, delta, theta,
-                       spec$degree)
+                       spec$degree, frailty_var, gl$x, gl$w)
     counts <- .new_perp_count_ll(spec, f$n_new, n_old, params, gradient = gradient)
     ll <- as.numeric(counts) + r[1L]
     if (gradient && is.finite(ll)) {
       g <- c(m = r[2L], beta_edges = r[3L], delta = r[4L], theta = r[5L],
-             attr(counts, "gradient"))
+             attr(counts, "gradient"), frailty_var = r[6L])
       attr(ll, "gradient") <- g[intersect(names(g), attachment_param_names(spec))]
     }
     ll
@@ -154,18 +176,25 @@ compile_logpmf_attach <- function(events, spec) {
 
 # Internal: a stateful mark simulator for sim_hawkesNet(), backed by the C++
 # simulator in src/attach_sim.cpp. It is only called for accepted events, so
-# each call advances the perp state. With finite `frailty_shape` each perp
-# gets a fixed propensity u ~ Gamma(shape, shape) (mean 1) multiplying its
-# weight; the likelihood ignores it, so this simulates unmodelled differences
-# between perps.
+# each call advances the perp state. Each perp gets a fixed propensity
+# u ~ Gamma(shape, shape) (mean 1) multiplying its rate, with shape
+# 1 / frailty_var if the spec has frailty, else `frailty_shape` (a frailty
+# the fitted model ignores, for checking what other effects pick up).
 .make_sim_mark_attach <- function(spec, frailty_shape = Inf) {
   stopifnot(is.numeric(frailty_shape), length(frailty_shape) == 1L, frailty_shape > 0)
+  if (isTRUE(spec$frailty) && is.finite(frailty_shape)) {
+    stop("Give `frailty_shape` only when the attachment spec has no frailty.", call. = FALSE)
+  }
   sim <- NULL
   perp_ids <- character(0)   # perp id by C++ index
   n_ids <- 0L                # node ids handed out so far (events and perps)
 
   function(net, t_k, params, ...) {
     if (is.null(sim)) {
+      if (isTRUE(spec$frailty)) {
+        fv <- params[["frailty_var"]]
+        frailty_shape <- if (fv > 0) 1 / fv else Inf
+      }
       sim <<- attach_sim_new(params, spec$degree, spec$coffenders,
                              spec$coffender_scale == "log1p", spec$coffender_window,
                              spec$new_perps == "negbin", spec$min_perps == 1L,
