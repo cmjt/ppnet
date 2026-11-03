@@ -21,28 +21,29 @@
   unserialize(serialize(net, NULL))
 }
 
-# deterministic candidate set: each new node considers the first `truncation`
-# old nodes in sorted order (no randomness in the candidate set).
+# deterministic candidate set: each new node considers the `truncation` most
+# recently arrived old nodes (no randomness in the candidate set).
+# `old_nodes` must be in arrival order, as given by network.vertex.names().
 .cs_candidates_new_old <- function(new_nodes, old_nodes, truncation = Inf) {
   stopifnot(is.character(new_nodes), is.character(old_nodes))
   if (length(new_nodes) == 0L || length(old_nodes) == 0L) {
     return(list(tail = character(0), head = character(0)))
   }
 
-  old_sorted <- sort(old_nodes)
-
   if (is.finite(truncation)) {
     truncation <- as.integer(truncation)
     if (!(length(truncation) == 1L && is.finite(truncation) && truncation >= 1L)) {
       stop("CS truncation must be an integer >= 1 (or Inf).", call. = FALSE)
     }
+    old_nodes <- old_nodes[seq.int(to = length(old_nodes), length.out = min(truncation, length(old_nodes)))]
   }
+
+  heads_u <- sort(old_nodes)
 
   tail_out <- character(0)
   head_out <- character(0)
 
   for (u in new_nodes) {
-    heads_u <- if (is.finite(truncation)) old_sorted[seq_len(min(truncation, length(old_sorted)))] else old_sorted
     tail_out <- c(tail_out, rep.int(u, length(heads_u)))
     head_out <- c(head_out, heads_u)
   }

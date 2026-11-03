@@ -2,7 +2,7 @@
 
 # Events
 
-`hawkesNet` is **events-first**. Instead of converting your data into a `network`
+`ppnet` is **events-first**. Instead of converting your data into a `network`
 object up-front, you provide **node arrivals** and **edge arrivals** as data
 frames, then call `make_events()` to convert them into the internal `events`
 representation used by simulation and fitting.
@@ -23,7 +23,7 @@ edgeless node arrivals, as the node only exists when it first appears in an edge
 | Column | Type | Meaning | Notes |
 |---|---|---|---|
 | `i` | character / integer | Tail/endpoint node id | Together with `j` identifies an edge between two nodes. |
-| `j` | character / integer | Head/endpoint node id | Current `hawkesNet` kernels treat edges as **undirected** (order doesn’t matter). |
+| `j` | character / integer | Head/endpoint node id | Current `ppnet` kernels treat edges as **undirected** (order doesn’t matter). |
 | `time` | numeric | Edge arrival time | Must be $\ge$ both endpoint birth times in `nodes` (if provided). |
 | `...` | any | Extra edge attributes | Carried through as edge attributes in the underlying network during fitting. |
 
@@ -71,7 +71,7 @@ There are a number of helpers included in the package to make working with the
 - `nodes_by_event(ev)` → list of node-arrival data frames (one per `event_id`)
 - `edges_by_event(ev)` → list of edge-arrival data frames (one per `event_id`)
 
-See the actual docs (eg. `?hawkesNet::create_net_from_events`) for more 
+See the actual docs (eg. `?ppnet::create_net_from_events`) for more 
 information on these.
 
 ## Examples {.unnumbered}

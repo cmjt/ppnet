@@ -104,7 +104,7 @@ compile_logpmf_cs <- function(
     net2 <- .cs_augment_net_with_new_nodes(net, arrivals_k, t_k = t_k)
 
     # Deterministic candidate set (tails/heads are character ids)
-    cand <- .cs_candidates_new_old(arrivals_k, old_nodes, truncation = Inf)
+    cand <- .cs_candidates_new_old(arrivals_k, old_nodes, truncation = truncation)
     tails <- cand$tail
     heads <- cand$head
 
@@ -164,6 +164,12 @@ compile_logpmf_cs <- function(
 
     # Observed edges must be subset of candidate set (same as log_pmf_cs)
     if (length(setdiff(obs_keys, cand_keys)) > 0L) {
+      # With a finite truncation this means the data can't be fit at that
+      # truncation, which would otherwise show up as a flat -Inf objective.
+      if (is.finite(truncation)) {
+        stop("compile_logpmf_cs(): event ", k, " has an edge to an old node outside the ",
+             truncation, " most recent; increase `truncation`.", call. = FALSE)
+      }
       cache[[k]] <- list(type = "invalid", reason = "obs_not_subset_candidates")
       net <- net_step_fun(net, new_nodes, new_edges, t_k)
       next

@@ -3,11 +3,11 @@
 
 pkg_dir <- Sys.getenv("QUARTO_PROJECT_DIR", unset = getwd())
 
-if ("package:hawkesNet" %in% search())
-  detach("package:hawkesNet", unload = TRUE, character.only = TRUE)
+if ("package:ppnet" %in% search())
+  detach("package:ppnet", unload = TRUE, character.only = TRUE)
 
-if ("hawkesNet" %in% loadedNamespaces())
-  unloadNamespace("hawkesNet")
+if ("ppnet" %in% loadedNamespaces())
+  unloadNamespace("ppnet")
 
 devtools::load_all(pkg_dir, quiet = TRUE)
 

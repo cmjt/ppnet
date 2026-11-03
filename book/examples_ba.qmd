@@ -6,7 +6,7 @@
 
 The BA kernel is a **new-node attachment** model: at each event time, exactly **one new node** arrives, and it connects to a subset of the **already-existing** nodes.
 
-In the current `hawkesNet` implementation, the set of attachments is modelled as follows:
+In the current `ppnet` implementation, the set of attachments is modelled as follows:
 
 - Let $V(t^-)$ be the set of existing (“old”) nodes right before the event at time $t$.
 - For each old node $u \in V(t^-)$, the new node attaches to $u$ **independently** with probability

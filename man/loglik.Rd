@@ -16,6 +16,8 @@ loglik(
   net_step_fun = net_add_event,
   formula_rhs = NULL,
   truncation = Inf,
+  baseline = NULL,
+  excitation = NULL,
   ...
 )
 }
@@ -44,6 +46,19 @@ last event time.}
 Defaults to \code{net_add_event}.}
 
 \item{formula_rhs}{String, the CS kernel formula}
+
+\item{truncation}{CS only: number of most recent old nodes each new node
+can attach to.}
+
+\item{baseline}{Optional \code{\link[=baseline_spec]{baseline_spec()}} for a time-varying baseline
+\eqn{\mu(t) = \mu \exp\{x(t)^\top b\}}. \code{params} must then also
+contain the coefficients named by \code{\link[=baseline_coef_names]{baseline_coef_names()}}. \code{NULL} (the
+default) gives the constant baseline \code{mu}.}
+
+\item{excitation}{Optional \code{\link[=excitation_spec]{excitation_spec()}} letting each event's
+excitation depend on its size and connectedness (bipartite mark types
+only). \code{params} must then also contain \code{alpha} and/or \code{gamma}. \code{NULL}
+(the default) gives constant excitation \code{K}.}
 
 \item{...}{Additional arguments forwarded to the mark PMF / edge-probability
 functions (e.g. \code{delta}, \code{model_cache}, etc.).}

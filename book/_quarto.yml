@@ -4,13 +4,13 @@ project:
   output-dir: ../docs
 
 book:
-  title: "hawkesNet"
+  title: "ppnet"
   subtitle: "An R package for fitting Hawkes network growth models"
   sidebar:
     logo: mini_BA_logo.png
     tools:
       - icon: github
-        href: https://github.com/JosephReps/hawkesNet
+        href: https://github.com/cmjt/ppnet
       - icon: envelope
         href: mailto:joseph.reps@gmail.com
   chapters:

@@ -1,21 +1,32 @@
-Package: hawkesNet
+Package: ppnet
 Type: Package
-Title: What the Package Does (Title Case)
+Title: Self-Exciting Point Process Models for Growing Networks
 Version: 0.1.0
-Author: Who wrote it
-Maintainer: The package maintainer <yourself@somewhere.net>
-Description: More about what it does (maybe more than one line)
-    Use four spaces when indenting paragraphs within the Description.
-License: MIT
+Authors@R: c(
+    person("Joseph", "Reps", , "joseph.reps@gmail.com", role = c("aut", "cph")),
+    person("Duncan", "Clark", , "dac6@williams.edu", role = c("aut", "cph")),
+    person("cmjt", , , "cmjonestodd@gmail.com", role = "cre"))
+Description: Simulates and fits Hawkes process models of network growth by
+    maximum likelihood. Events arrive with an exponential self-exciting
+    intensity, and each event's marks (new nodes and edges) follow either a
+    Barabasi-Albert or a change-statistic attachment kernel, for unipartite
+    and bipartite networks.
+License: MIT + file LICENSE
+URL: https://github.com/cmjt/ppnet
 Encoding: UTF-8
 LazyData: true
-Imports: 
-    roxygen2,
-    testthat,
-    withr,
-    network,
-    sna,
+Depends:
+    R (>= 3.5.0),
     ernm
-RoxygenNote: 7.3.1
+Imports:
+    network,
+    Rcpp,
+    sna,
+    stats
+LinkingTo:
+    Rcpp
+Suggests:
+    testthat (>= 3.0.0)
 Config/testthat/edition: 3
 Roxygen: list(markdown = TRUE)
+Config/roxygen2/version: 8.1.0

@@ -15,6 +15,8 @@
   net_step_fun = net_add_event,
   formula_rhs = NULL,
   truncation = Inf,
+  baseline = NULL,
+  excitation = NULL,
   ...
 )
 }

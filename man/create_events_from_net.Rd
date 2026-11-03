@@ -11,9 +11,6 @@ create_events_from_net(
   ...
 )
 }
-\arguments{
-\item{...}{}
-}
 \description{
 Preserves network attributes. Defaults to expecting "time" as edge / vertex
 attribute for event / birth time.

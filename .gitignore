@@ -11,3 +11,6 @@ book/sim_study_results/
 
 # Quarto build artifacts
 book/_freeze/
+src/*.o
+src/*.so
+src/*.dll

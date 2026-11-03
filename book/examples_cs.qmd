@@ -24,7 +24,7 @@ At each event time $t$:
   $$
   \{(u, v): u \in N(t),\; v \in V(t^-)\},
   $$
-  with an optional **truncation** that limits each new node to only consider the first `truncation` old nodes (according to the current ordering used internally) (Currently not implemented, argument doesn't do anything but it's not needed).
+  with an optional **truncation** that limits each new node to only consider the `truncation` most recently arrived old nodes. Fitting stops with an error if an observed edge falls outside this set.
 
 For each candidate edge $(u, v)$ (new node $u$ to old node $v$), a vector of change statistics
 $$

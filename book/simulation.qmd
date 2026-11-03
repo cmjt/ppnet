@@ -8,7 +8,7 @@ Uses the usual hawkes Ogata thinning algorithm.
 
 ## Example {.unnumbered}
 
-Simulate data using the `sim_hawkesNet()` function. See `?hawkesNet::sim_hawkesNet` 
+Simulate data using the `sim_hawkesNet()` function. See `?ppnet::sim_hawkesNet` 
 for more information.
 
 ```{r}

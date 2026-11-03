@@ -12,9 +12,6 @@ create_net_from_events(
   debug = FALSE
 )
 }
-\arguments{
-\item{net_step_fun}{}
-}
 \description{
 Title
 }

@@ -14,11 +14,18 @@ sim_hawkesNet(
   debug = FALSE,
   net_init_fun = net_init,
   net_step_fun = net_add_event,
+  baseline = NULL,
+  excitation = NULL,
   ...
 )
 }
 \arguments{
-\item{...}{}
+\item{baseline}{Optional \code{\link[=baseline_spec]{baseline_spec()}} for a time-varying baseline; its
+coefficients go in \code{params}.}
+
+\item{excitation}{Optional \code{\link[=excitation_spec]{excitation_spec()}} for size- and
+connectedness-dependent excitation (bipartite mark types only); its
+coefficients go in \code{params}.}
 }
 \description{
 Title

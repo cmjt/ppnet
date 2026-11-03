@@ -18,7 +18,12 @@
 #' @param T0 Start time for the likelihood window.
 #' @param ... Additional arguments forwarded to the mark PMF / edge-probability
 #'   functions used inside `loglik()`.
-#' @param formula_rhs
+#' @param formula_rhs String, the CS kernel formula.
+#' @param baseline Optional [baseline_spec()] for a time-varying baseline. Its
+#'   coefficients (see [baseline_coef_names()]) must be in `params_init`, and
+#'   default to the `"none"` transform.
+#' @param excitation Optional [excitation_spec()]; its coefficients (`alpha`,
+#'   `gamma`) must be in `params_init` and default to the `"none"` transform.
 #'
 #' @return A list with components:
 #' \describe{
@@ -73,6 +78,8 @@ fit_hawkesNet <- function(events,
                           T_end = NULL,
                           T0 = 0,
                           formula_rhs = NULL,
+                          baseline = NULL,
+                          excitation = NULL,
                           ...
                           ) {
   # 0) Input validation
@@ -82,14 +89,25 @@ fit_hawkesNet <- function(events,
 
   start_time <- proc.time()
 
+  # Check up front: inside the objective a missing coefficient would be caught
+  # and look like an infeasible point, so the fit would fail silently.
+  if (!is.null(baseline)) .baseline_coefs(baseline, params_init)
+  if (!is.null(excitation)) .excitation_coefs(excitation, params_init)
+
   # 1) Deal with the parameter transformations
 
   # If no transformation information was provided, assume we are fitting on the
   # log scale
+  # Baseline and excitation coefficients can be negative, so they are fitted
+  # untransformed unless the user says otherwise.
+  b_names <- intersect(c(baseline_coef_names(baseline), excitation_coef_names(excitation)),
+                       names(params_init))
   if (is.null(transform)) {
     transform <- rep("log", length(params_init))
     names(transform) <- names(params_init)
+    transform[b_names] <- "none"
   }
+  transform[setdiff(b_names, names(transform))] <- "none"
   # Make sure that each parameter has a valid transform, default to "log"
   # and warn user in the case any are missing
   missing_tf <- setdiff(names(params_init), names(transform))
@@ -126,6 +144,8 @@ fit_hawkesNet <- function(events,
     mark_type = mark_type,
     debug = debug,
     formula_rhs = formula_rhs,
+    baseline = baseline,
+    excitation = excitation,
     ...
   )
 
@@ -144,10 +164,16 @@ fit_hawkesNet <- function(events,
 
   # 4) Optimizer setup
 
+  # Transform the initial parameter values to working scale
+  x0_all <- to_working(params_init, transform)
+
   # Define the objective function
   fn <- function(x) {
-    # Make sure to transform to back from working scale
-    p <- from_working(x, transform)
+    # optim() only passes the free parameters, so fill in the fixed ones
+    # before transforming back from working scale
+    x_all <- x0_all
+    x_all[free_params] <- x
+    p <- from_working(x_all, transform)
     ll <- tryCatch(
       ll_fn(p),
       error = function(e) -Inf
@@ -156,15 +182,33 @@ fit_hawkesNet <- function(events,
     -ll
   }
 
-  # Transform the initial parameter values to working scale
-  x0_all <- to_working(params_init, transform)
   # Make sure to only optimize the free parameters
   x0 <- x0_all[free_params]
+
+  # Analytic gradient on the working scale, when the model provides one.
+  # d/dx = p * d/dp for log-transformed parameters. Parameters the likelihood
+  # does not use get gradient zero.
+  gr <- function(x) {
+    x_all <- x0_all
+    x_all[free_params] <- x
+    p <- from_working(x_all, transform)
+    ll <- tryCatch(ll_fn(p, gradient = TRUE), error = function(e) -Inf)
+    g <- attr(ll, "gradient")
+    if (!is.finite(ll) || is.null(g)) return(rep(0, length(x)))
+    g_free <- vapply(free_params, function(nm) if (nm %in% names(g)) g[[nm]] else 0, numeric(1))
+    is_log <- vapply(free_params, function(nm) (transform[[nm]] %||% "log") == "log", logical(1))
+    g_free[is_log] <- g_free[is_log] * unlist(p[free_params[is_log]])
+    -g_free
+  }
+  p_init <- from_working(x0_all, transform)
+  has_grad <- !is.null(attr(tryCatch(ll_fn(p_init, gradient = TRUE), error = function(e) NULL),
+                            "gradient"))
 
   # 5) Fit the model
   fit <- stats::optim(
     par = x0,
     fn = fn,
+    gr = if (has_grad) gr else NULL,
     method = "BFGS",
     control = control,
     hessian = hessian

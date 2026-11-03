@@ -83,7 +83,7 @@ res <- list(
 )
 
 # ---- load package (edit if needed) ----
-# If running inside the hawkesNet package repo, this is often enough:
+# If running inside the ppnet package repo, this is often enough:
 # devtools::load_all()
 # Otherwise assume it's installed:
 

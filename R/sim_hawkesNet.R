@@ -9,6 +9,11 @@
 #' @param debug
 #' @param net_init_fun
 #' @param net_step_fun
+#' @param baseline Optional [baseline_spec()] for a time-varying baseline; its
+#'   coefficients go in `params`.
+#' @param excitation Optional [excitation_spec()] for size- and
+#'   connectedness-dependent excitation (bipartite mark types only); its
+#'   coefficients go in `params`.
 #' @param ...
 #'
 #' @return
@@ -23,6 +28,8 @@ sim_hawkesNet <- function(
     debug = FALSE,
     net_init_fun = net_init,
     net_step_fun = net_add_event,
+    baseline = NULL,
+    excitation = NULL,
     ...
 ) {
   start_time <- proc.time()
@@ -33,6 +40,28 @@ sim_hawkesNet <- function(
   if (!is.finite(mu) || mu <= 0) stop("mu>0 required")
   if (!is.finite(K)  || K  < 0) stop("K>=0 required")
   if (!is.finite(beta) || beta <= 0) stop("beta>0 required")
+
+  # Baseline rate at time t, and a bound on it over the window for thinning.
+  # The excitation only decays between events, so mu_max + K * S bounds the
+  # intensity from any time until the next accepted event.
+  if (is.null(baseline)) {
+    mu_at <- function(t) mu
+    mu_max <- mu
+  } else {
+    b <- .baseline_coefs(baseline, params)
+    mu_at <- function(t) mu * exp(sum(.baseline_design(baseline, t) * b))
+    mu_max <- .baseline_upper(baseline, params, T0, T_end)
+  }
+
+  # Mark-dependent jump sizes need each event's perps and the earlier events
+  # they were at, kept as perp id -> event indices.
+  if (!is.null(excitation)) {
+    if (!mark_type %in% c("ba_bip", "cs_bip")) {
+      stop("`excitation` needs a bipartite mark_type ('ba_bip' or 'cs_bip').", call. = FALSE)
+    }
+    a_exc <- .excitation_coefs(excitation, params)
+    perp_history <- new.env(hash = TRUE)
+  }
 
   # Mark kernel dispatch
   if (mark_type == "ba") {
@@ -66,8 +95,7 @@ sim_hawkesNet <- function(
 
   # compute initial bound M = lambda(t)
   cache <- time_cache_step(cache, t, beta = beta)
-  lambda_now <- temporal_intensity_from_cache(cache, mu = mu, K = K, beta = beta)
-  M <- lambda_now
+  M <- temporal_intensity_from_cache(cache, mu = mu_max, K = K, beta = beta)
 
   while (t < T_end) {
     if (!is.finite(M) || M <= 0) break
@@ -79,7 +107,7 @@ sim_hawkesNet <- function(
 
     # move cache to candidate time and compute true intensity there
     cache_prop <- time_cache_step(cache, t_prop, beta = beta)
-    lambda_prop <- temporal_intensity_from_cache(cache_prop, mu = mu, K = K, beta = beta)
+    lambda_prop <- temporal_intensity_from_cache(cache_prop, mu = mu_at(t_prop), K = K, beta = beta)
 
     accepted <- FALSE
     a <- lambda_prop / M
@@ -138,20 +166,30 @@ sim_hawkesNet <- function(
       net <- net_step_fun(net, arrivals_k, edges_k, t_prop)
 
       # Hawkes jump at an accepted event (event-driven ground process)
-      cache_prop$S <- cache_prop$S + 1
+      if (is.null(excitation)) {
+        g_k <- 1
+      } else {
+        event_id <- as.character(arrivals_k$id[arrivals_k$role == "event"])
+        ei <- as.character(edges_k$i)
+        ej <- as.character(edges_k$j)
+        perps <- unique(c(ej[ei == event_id], ei[ej == event_id]))
+        past <- unique(unlist(mget(perps, envir = perp_history, ifnotfound = list(integer(0)))))
+        past <- past[t_prop - events_t[past] <= excitation$connectedness_window]
+        z_k <- .excitation_z(excitation, length(perps), length(past))
+        g_k <- exp(sum(z_k * a_exc))
+        k <- length(events_t) + 1L
+        for (v in perps) assign(v, c(perp_history[[v]], k), envir = perp_history)
+      }
+      cache_prop$S <- cache_prop$S + g_k
       events_t <- c(events_t, t_prop)
 
-      lambda_after <- temporal_intensity_from_cache(cache_prop, mu = mu, K = K, beta = beta)
+      M_after <- temporal_intensity_from_cache(cache_prop, mu = mu_max, K = K, beta = beta)
     }
 
     # advance time regardless; update cache + bound for next iteration
     t <- t_prop
     cache <- cache_prop
-    if (accepted) {
-      M <- lambda_after
-    } else {
-      M <- lambda_prop
-    }
+    M <- if (accepted) M_after else temporal_intensity_from_cache(cache_prop, mu = mu_max, K = K, beta = beta)
   }
 
   out <- list(

@@ -84,7 +84,7 @@
 
 # Preface {.unnumbered}
 
-`hawkesNet` is an R package for fitting self-exciting network growth models.
+`ppnet` is an R package for fitting self-exciting network growth models.
 It is designed to support simulation studies, model comparison, and scalable
 inference on dynamic networks.
 
@@ -95,8 +95,16 @@ parse through documentation.
 
 ```{r eval = FALSE}
 # install.packages("devtools")
-devtools::install_github("JosephReps/hawkesNet")
+devtools::install_github("cmjt/ppnet")
 ```
+
+## Acknowledgements
+
+`ppnet` derives from `hawkesNet`. It continues
+[Joseph Reps's work](https://github.com/JosephReps/hawkesNet)
+([documentation](https://josephreps.github.io/hawkesNet/)), and all of the
+development up to the move to this repository is his. `hawkesNet` is by
+[Duncan Clark](https://github.com/duncan-clark/hawkesNet).
 
 <!-- This is the interactive network code -->
 <!-- Straight from vibe-coding hell -->

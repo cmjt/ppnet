@@ -16,6 +16,8 @@ fit_hawkesNet(
   T_end = NULL,
   T0 = 0,
   formula_rhs = NULL,
+  baseline = NULL,
+  excitation = NULL,
   ...
 )
 }
@@ -46,7 +48,14 @@ components where supported).}
 
 \item{T0}{Start time for the likelihood window.}
 
-\item{formula_rhs}{}
+\item{formula_rhs}{String, the CS kernel formula.}
+
+\item{baseline}{Optional \code{\link[=baseline_spec]{baseline_spec()}} for a time-varying baseline. Its
+coefficients (see \code{\link[=baseline_coef_names]{baseline_coef_names()}}) must be in \code{params_init}, and
+default to the \code{"none"} transform.}
+
+\item{excitation}{Optional \code{\link[=excitation_spec]{excitation_spec()}}; its coefficients (\code{alpha},
+\code{gamma}) must be in \code{params_init} and default to the \code{"none"} transform.}
 
 \item{...}{Additional arguments forwarded to the mark PMF / edge-probability
 functions used inside \code{loglik()}.}

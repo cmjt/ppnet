@@ -84,7 +84,7 @@ If you haven't already, install the package:
 
 ```{r eval = FALSE}
 # install.packages("devtools")
-devtools::install_github("JosephReps/hawkesNet")
+devtools::install_github("cmjt/ppnet")
 ```
 
 ### ReprEx {.unnumbered}
