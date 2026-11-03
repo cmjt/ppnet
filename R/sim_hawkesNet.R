@@ -14,6 +14,14 @@
 #' @param excitation Optional [excitation_spec()] for size- and
 #'   connectedness-dependent excitation (bipartite mark types only); its
 #'   coefficients go in `params`.
+#' @param attachment Optional [attachment_spec()] for which old perps join
+#'   each event (`mark_type = "ba_bip"` only); its parameters go in `params`.
+#' @param kernel `"exp"` or `"exp2"`; see [loglik()].
+#' @param frailty_shape With `attachment` only: finite values give each perp
+#'   a fixed propensity \eqn{u \sim \text{Gamma}(\text{shape}, \text{shape})}
+#'   (mean 1, variance 1 / shape) multiplying its attachment weight. The
+#'   likelihood has no such term, so this simulates unmodelled differences
+#'   between perps, e.g. to check what the co-offender effect picks up.
 #' @param ...
 #'
 #' @return
@@ -30,6 +38,9 @@ sim_hawkesNet <- function(
     net_step_fun = net_add_event,
     baseline = NULL,
     excitation = NULL,
+    attachment = NULL,
+    kernel = c("exp", "exp2"),
+    frailty_shape = Inf,
     ...
 ) {
   start_time <- proc.time()
@@ -40,6 +51,19 @@ sim_hawkesNet <- function(
   if (!is.finite(mu) || mu <= 0) stop("mu>0 required")
   if (!is.finite(K)  || K  < 0) stop("K>=0 required")
   if (!is.finite(beta) || beta <= 0) stop("beta>0 required")
+  kernel <- match.arg(kernel)
+  K_fast <- 0
+  beta_fast <- 1
+  if (kernel == "exp2") {
+    K_fast <- params$K_fast
+    beta_fast <- params$beta_fast
+    if (is.null(K_fast) || !is.finite(K_fast) || K_fast < 0) stop("K_fast>=0 required")
+    if (is.null(beta_fast) || !is.finite(beta_fast) || beta_fast <= beta) stop("beta_fast>beta required")
+  }
+  # Slow component (cache) plus fast component (cache_f, unit jumps).
+  intensity <- function(cache, cache_f, mu_t) {
+    temporal_intensity_from_cache(cache, mu = mu_t, K = K, beta = beta) + K_fast * cache_f$S
+  }
 
   # Baseline rate at time t, and a bound on it over the window for thinning.
   # The excitation only decays between events, so mu_max + K * S bounds the
@@ -75,6 +99,10 @@ sim_hawkesNet <- function(
   } else {
     stop("mark_type must be one of 'ba', 'cs', 'ba_bip', 'cs_bip'")
   }
+  if (!is.null(attachment)) {
+    if (mark_type != "ba_bip") stop("`attachment` needs mark_type = 'ba_bip'.", call. = FALSE)
+    sim_mark_fun <- .make_sim_mark_attach(attachment, frailty_shape = frailty_shape)
+  }
 
 
   # CS: model cache for ernm
@@ -95,7 +123,8 @@ sim_hawkesNet <- function(
 
   # compute initial bound M = lambda(t)
   cache <- time_cache_step(cache, t, beta = beta)
-  M <- temporal_intensity_from_cache(cache, mu = mu_max, K = K, beta = beta)
+  cache_f <- time_cache_init(T0 = T0)
+  M <- intensity(cache, cache_f, mu_max)
 
   while (t < T_end) {
     if (!is.finite(M) || M <= 0) break
@@ -107,7 +136,8 @@ sim_hawkesNet <- function(
 
     # move cache to candidate time and compute true intensity there
     cache_prop <- time_cache_step(cache, t_prop, beta = beta)
-    lambda_prop <- temporal_intensity_from_cache(cache_prop, mu = mu_at(t_prop), K = K, beta = beta)
+    cache_f_prop <- time_cache_step(cache_f, t_prop, beta = beta_fast)
+    lambda_prop <- intensity(cache_prop, cache_f_prop, mu_at(t_prop))
 
     accepted <- FALSE
     a <- lambda_prop / M
@@ -181,15 +211,17 @@ sim_hawkesNet <- function(
         for (v in perps) assign(v, c(perp_history[[v]], k), envir = perp_history)
       }
       cache_prop$S <- cache_prop$S + g_k
+      cache_f_prop$S <- cache_f_prop$S + 1
       events_t <- c(events_t, t_prop)
 
-      M_after <- temporal_intensity_from_cache(cache_prop, mu = mu_max, K = K, beta = beta)
+      M_after <- intensity(cache_prop, cache_f_prop, mu_max)
     }
 
     # advance time regardless; update cache + bound for next iteration
     t <- t_prop
     cache <- cache_prop
-    M <- if (accepted) M_after else temporal_intensity_from_cache(cache_prop, mu = mu_max, K = K, beta = beta)
+    cache_f <- cache_f_prop
+    M <- if (accepted) M_after else intensity(cache_prop, cache_f_prop, mu_max)
   }
 
   out <- list(

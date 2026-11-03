@@ -18,6 +18,8 @@ fit_hawkesNet(
   formula_rhs = NULL,
   baseline = NULL,
   excitation = NULL,
+  attachment = NULL,
+  kernel = c("exp", "exp2"),
   ...
 )
 }
@@ -56,6 +58,12 @@ default to the \code{"none"} transform.}
 
 \item{excitation}{Optional \code{\link[=excitation_spec]{excitation_spec()}}; its coefficients (\code{alpha},
 \code{gamma}) must be in \code{params_init} and default to the \code{"none"} transform.}
+
+\item{attachment}{Optional \code{\link[=attachment_spec]{attachment_spec()}}; \code{theta} defaults to the
+\code{"none"} transform, the other attachment parameters to \code{"log"}.}
+
+\item{kernel}{\code{"exp"} or \code{"exp2"}; see \code{\link[=loglik]{loglik()}}. With \code{"exp2"},
+\code{params_init} must contain \code{K_fast} and \code{beta_fast}, with \code{beta_fast > beta}.}
 
 \item{...}{Additional arguments forwarded to the mark PMF / edge-probability
 functions used inside \code{loglik()}.}

@@ -10,6 +10,48 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
+// attach_history_cpp
+List attach_history_cpp(NumericVector t, IntegerVector node_ptr, IntegerVector edge_ptr, IntegerVector edge_i, IntegerVector edge_j, IntegerVector focal, int n_nodes, double window);
+RcppExport SEXP _ppnet_attach_history_cpp(SEXP tSEXP, SEXP node_ptrSEXP, SEXP edge_ptrSEXP, SEXP edge_iSEXP, SEXP edge_jSEXP, SEXP focalSEXP, SEXP n_nodesSEXP, SEXP windowSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type t(tSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type node_ptr(node_ptrSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type edge_ptr(edge_ptrSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type edge_i(edge_iSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type edge_j(edge_jSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type focal(focalSEXP);
+    Rcpp::traits::input_parameter< int >::type n_nodes(n_nodesSEXP);
+    Rcpp::traits::input_parameter< double >::type window(windowSEXP);
+    rcpp_result_gen = Rcpp::wrap(attach_history_cpp(t, node_ptr, edge_ptr, edge_i, edge_j, focal, n_nodes, window));
+    return rcpp_result_gen;
+END_RCPP
+}
+// attach_ll_cpp
+NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr, IntegerVector upd_node, IntegerVector upd_deg, NumericVector upd_last, NumericVector upd_feat, IntegerVector obs_ptr, IntegerVector obs_node, int n_nodes, double m, double beta, double delta, double theta, bool use_degree);
+RcppExport SEXP _ppnet_attach_ll_cpp(SEXP tSEXP, SEXP upd_ptrSEXP, SEXP upd_nodeSEXP, SEXP upd_degSEXP, SEXP upd_lastSEXP, SEXP upd_featSEXP, SEXP obs_ptrSEXP, SEXP obs_nodeSEXP, SEXP n_nodesSEXP, SEXP mSEXP, SEXP betaSEXP, SEXP deltaSEXP, SEXP thetaSEXP, SEXP use_degreeSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type t(tSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type upd_ptr(upd_ptrSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type upd_node(upd_nodeSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type upd_deg(upd_degSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type upd_last(upd_lastSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type upd_feat(upd_featSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type obs_ptr(obs_ptrSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type obs_node(obs_nodeSEXP);
+    Rcpp::traits::input_parameter< int >::type n_nodes(n_nodesSEXP);
+    Rcpp::traits::input_parameter< double >::type m(mSEXP);
+    Rcpp::traits::input_parameter< double >::type beta(betaSEXP);
+    Rcpp::traits::input_parameter< double >::type delta(deltaSEXP);
+    Rcpp::traits::input_parameter< double >::type theta(thetaSEXP);
+    Rcpp::traits::input_parameter< bool >::type use_degree(use_degreeSEXP);
+    rcpp_result_gen = Rcpp::wrap(attach_ll_cpp(t, upd_ptr, upd_node, upd_deg, upd_last, upd_feat, obs_ptr, obs_node, n_nodes, m, beta, delta, theta, use_degree));
+    return rcpp_result_gen;
+END_RCPP
+}
 // mark_ll_attach_cpp
 NumericVector mark_ll_attach_cpp(NumericVector t, IntegerVector node_ptr, LogicalVector node_cand, NumericVector node_birth, IntegerVector edge_ptr, IntegerVector edge_i, IntegerVector edge_j, IntegerVector focal, double beta_edges, double delta, double eps);
 RcppExport SEXP _ppnet_mark_ll_attach_cpp(SEXP tSEXP, SEXP node_ptrSEXP, SEXP node_candSEXP, SEXP node_birthSEXP, SEXP edge_ptrSEXP, SEXP edge_iSEXP, SEXP edge_jSEXP, SEXP focalSEXP, SEXP beta_edgesSEXP, SEXP deltaSEXP, SEXP epsSEXP) {
@@ -50,8 +92,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // time_ll_cpp
-List time_ll_cpp(NumericVector t, NumericVector mu_ev, NumericVector g, NumericMatrix Z, double K, double beta, double T_end);
-RcppExport SEXP _ppnet_time_ll_cpp(SEXP tSEXP, SEXP mu_evSEXP, SEXP gSEXP, SEXP ZSEXP, SEXP KSEXP, SEXP betaSEXP, SEXP T_endSEXP) {
+List time_ll_cpp(NumericVector t, NumericVector mu_ev, NumericVector g, NumericMatrix Z, double K, double beta, double T_end, double K2, double beta2);
+RcppExport SEXP _ppnet_time_ll_cpp(SEXP tSEXP, SEXP mu_evSEXP, SEXP gSEXP, SEXP ZSEXP, SEXP KSEXP, SEXP betaSEXP, SEXP T_endSEXP, SEXP K2SEXP, SEXP beta2SEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -62,15 +104,19 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type K(KSEXP);
     Rcpp::traits::input_parameter< double >::type beta(betaSEXP);
     Rcpp::traits::input_parameter< double >::type T_end(T_endSEXP);
-    rcpp_result_gen = Rcpp::wrap(time_ll_cpp(t, mu_ev, g, Z, K, beta, T_end));
+    Rcpp::traits::input_parameter< double >::type K2(K2SEXP);
+    Rcpp::traits::input_parameter< double >::type beta2(beta2SEXP);
+    rcpp_result_gen = Rcpp::wrap(time_ll_cpp(t, mu_ev, g, Z, K, beta, T_end, K2, beta2));
     return rcpp_result_gen;
 END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
+    {"_ppnet_attach_history_cpp", (DL_FUNC) &_ppnet_attach_history_cpp, 8},
+    {"_ppnet_attach_ll_cpp", (DL_FUNC) &_ppnet_attach_ll_cpp, 14},
     {"_ppnet_mark_ll_attach_cpp", (DL_FUNC) &_ppnet_mark_ll_attach_cpp, 11},
     {"_ppnet_event_summary_cpp", (DL_FUNC) &_ppnet_event_summary_cpp, 8},
-    {"_ppnet_time_ll_cpp", (DL_FUNC) &_ppnet_time_ll_cpp, 7},
+    {"_ppnet_time_ll_cpp", (DL_FUNC) &_ppnet_time_ll_cpp, 9},
     {NULL, NULL, 0}
 };
 

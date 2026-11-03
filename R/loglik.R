@@ -56,10 +56,13 @@ temporal_intensity_from_cache <- function(cache, mu, K, beta, kernel_density = F
     truncation = Inf,
     baseline = NULL,
     excitation = NULL,
+    attachment = NULL,
+    kernel = c("exp", "exp2"),
     ...
 ) {
   stopifnot(inherits(events, "events"))
   event_times <- events$times$t
+  kernel <- match.arg(kernel)
 
   # In the case of no events
   if (length(event_times) == 0L) {
@@ -105,8 +108,17 @@ temporal_intensity_from_cache <- function(cache, mu, K, beta, kernel_density = F
   use_arrays <- is.null(net0) && identical(net_init_fun, net_init) &&
     identical(net_step_fun, net_add_event)
 
+  if (!is.null(attachment)) {
+    if (!inherits(attachment, "attachment_spec")) {
+      stop("`attachment` must be NULL or an attachment_spec().", call. = FALSE)
+    }
+    if (mark_type != "ba_bip") stop("`attachment` needs mark_type = 'ba_bip'.", call. = FALSE)
+    mark_type <- "attach"
+  }
+
   mark_logpmf <- switch(
     mark_type,
+    "attach" = compile_logpmf_attach(events, attachment),
     "ba" = if (use_arrays) compile_logpmf_ba_array(events, delta = 0.001, ...) else compile_logpmf_ba(
       events = events,
       net_init_fun = net_init_fun,
@@ -170,6 +182,19 @@ temporal_intensity_from_cache <- function(cache, mu, K, beta, kernel_density = F
     if (!is.finite(mu) || !is.finite(K) || !is.finite(beta) || mu <= 0 || K < 0 || beta <= 0)
       return(-Inf)
 
+    # Fast component: must decay faster than the slow one, so they can't swap.
+    K_fast <- 0
+    beta_fast <- 1
+    if (kernel == "exp2") {
+      K_fast <- params$K_fast
+      beta_fast <- params$beta_fast
+      if (is.null(K_fast) || is.null(beta_fast)) {
+        stop("kernel = 'exp2' needs parameters K_fast and beta_fast.", call. = FALSE)
+      }
+      if (!is.finite(K_fast) || !is.finite(beta_fast) || K_fast <= 0 || beta_fast <= beta)
+        return(-Inf)
+    }
+
     if (is.null(baseline)) {
       mu_ev <- rep.int(mu, length(event_times))
       baseline_int <- mu * (T_end - T0)
@@ -193,7 +218,7 @@ temporal_intensity_from_cache <- function(cache, mu, K, beta, kernel_density = F
       g_exc <- exp(drop(Z_exc %*% a))
     }
 
-    tm <- time_ll_cpp(event_times, mu_ev, g_exc, Z_exc, K, beta, T_end)
+    tm <- time_ll_cpp(event_times, mu_ev, g_exc, Z_exc, K, beta, T_end, K_fast, beta_fast)
     if (!is.finite(tm$ll)) return(-Inf)
 
     # Debug plot (two panels), replaying the history one event at a time
@@ -222,6 +247,7 @@ temporal_intensity_from_cache <- function(cache, mu, K, beta, kernel_density = F
           g <- c(g, g_b)
         }
         if (!is.null(excitation)) g <- c(g, stats::setNames(tm$da, colnames(Z_exc)))
+        if (kernel == "exp2") g <- c(g, K_fast = tm$dK2, beta_fast = tm$dbeta2)
         attr(ll, "gradient") <- c(g, mark_grad)
       }
     }
@@ -254,6 +280,14 @@ temporal_intensity_from_cache <- function(cache, mu, K, beta, kernel_density = F
 #'   excitation depend on its size and connectedness (bipartite mark types
 #'   only). `params` must then also contain `alpha` and/or `gamma`. `NULL`
 #'   (the default) gives constant excitation `K`.
+#' @param attachment Optional [attachment_spec()] replacing the BA-bip rule
+#'   for which old perps join each event (`mark_type = "ba_bip"` only).
+#'   `params` must then contain [attachment_param_names()].
+#' @param kernel `"exp"` (default) for one exponential component, or `"exp2"`
+#'   to add a fast component \eqn{K_{fast} \sum_i e^{-\beta_{fast}(t - t_i)}}
+#'   with unit jumps; `K`, `beta` and any `excitation` stay with the slow
+#'   component. `params` must then contain `K_fast` and `beta_fast`, and the
+#'   likelihood is `-Inf` unless `beta_fast > beta`.
 #'
 #' @return A numeric scalar log-likelihood. Returns `-Inf` for invalid parameter
 #'   values or if the likelihood is undefined.
@@ -269,6 +303,8 @@ loglik <- function(
     truncation = Inf,
     baseline = NULL,
     excitation = NULL,
+    attachment = NULL,
+    kernel = c("exp", "exp2"),
     ...
 ) {
   ll_fn <- .build_loglik_fn(
@@ -280,6 +316,8 @@ loglik <- function(
     truncation = truncation,
     baseline = baseline,
     excitation = excitation,
+    attachment = attachment,
+    kernel = kernel,
     ...
   )
   ll_fn(params)

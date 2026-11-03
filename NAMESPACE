@@ -3,6 +3,8 @@
 S3method(plot,events)
 S3method(plot,hawkesNet_fit)
 export(.build_loglik_fn)
+export(attachment_param_names)
+export(attachment_spec)
 export(baseline_coef_names)
 export(baseline_spec)
 export(create_events_from_net)

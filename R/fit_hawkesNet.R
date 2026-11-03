@@ -24,6 +24,10 @@
 #'   default to the `"none"` transform.
 #' @param excitation Optional [excitation_spec()]; its coefficients (`alpha`,
 #'   `gamma`) must be in `params_init` and default to the `"none"` transform.
+#' @param attachment Optional [attachment_spec()]; `theta` defaults to the
+#'   `"none"` transform, the other attachment parameters to `"log"`.
+#' @param kernel `"exp"` or `"exp2"`; see [loglik()]. With `"exp2"`,
+#'   `params_init` must contain `K_fast` and `beta_fast`, with `beta_fast > beta`.
 #'
 #' @return A list with components:
 #' \describe{
@@ -80,6 +84,8 @@ fit_hawkesNet <- function(events,
                           formula_rhs = NULL,
                           baseline = NULL,
                           excitation = NULL,
+                          attachment = NULL,
+                          kernel = c("exp", "exp2"),
                           ...
                           ) {
   # 0) Input validation
@@ -93,6 +99,19 @@ fit_hawkesNet <- function(events,
   # and look like an infeasible point, so the fit would fail silently.
   if (!is.null(baseline)) .baseline_coefs(baseline, params_init)
   if (!is.null(excitation)) .excitation_coefs(excitation, params_init)
+  kernel <- match.arg(kernel)
+  if (kernel == "exp2") {
+    if (!all(c("K_fast", "beta_fast") %in% names(params_init))) {
+      stop("kernel = 'exp2' needs K_fast and beta_fast in params_init.", call. = FALSE)
+    }
+    if (!(params_init$beta_fast > params_init$beta)) {
+      stop("kernel = 'exp2' needs beta_fast > beta in params_init.", call. = FALSE)
+    }
+  }
+  missing_attach <- setdiff(attachment_param_names(attachment), names(params_init))
+  if (length(missing_attach) > 0L) {
+    stop("Missing attachment parameters: ", paste(missing_attach, collapse = ", "), call. = FALSE)
+  }
 
   # 1) Deal with the parameter transformations
 
@@ -100,7 +119,8 @@ fit_hawkesNet <- function(events,
   # log scale
   # Baseline and excitation coefficients can be negative, so they are fitted
   # untransformed unless the user says otherwise.
-  b_names <- intersect(c(baseline_coef_names(baseline), excitation_coef_names(excitation)),
+  b_names <- intersect(c(baseline_coef_names(baseline), excitation_coef_names(excitation),
+                         if (!is.null(attachment) && attachment$coffenders) "theta"),
                        names(params_init))
   if (is.null(transform)) {
     transform <- rep("log", length(params_init))
@@ -146,6 +166,8 @@ fit_hawkesNet <- function(events,
     formula_rhs = formula_rhs,
     baseline = baseline,
     excitation = excitation,
+    attachment = attachment,
+    kernel = kernel,
     ...
   )
 

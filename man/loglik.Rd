@@ -18,6 +18,8 @@ loglik(
   truncation = Inf,
   baseline = NULL,
   excitation = NULL,
+  attachment = NULL,
+  kernel = c("exp", "exp2"),
   ...
 )
 }
@@ -59,6 +61,16 @@ default) gives the constant baseline \code{mu}.}
 excitation depend on its size and connectedness (bipartite mark types
 only). \code{params} must then also contain \code{alpha} and/or \code{gamma}. \code{NULL}
 (the default) gives constant excitation \code{K}.}
+
+\item{attachment}{Optional \code{\link[=attachment_spec]{attachment_spec()}} replacing the BA-bip rule
+for which old perps join each event (\code{mark_type = "ba_bip"} only).
+\code{params} must then contain \code{\link[=attachment_param_names]{attachment_param_names()}}.}
+
+\item{kernel}{\code{"exp"} (default) for one exponential component, or \code{"exp2"}
+to add a fast component \eqn{K_{fast} \sum_i e^{-\beta_{fast}(t - t_i)}}
+with unit jumps; \code{K}, \code{beta} and any \code{excitation} stay with the slow
+component. \code{params} must then contain \code{K_fast} and \code{beta_fast}, and the
+likelihood is \code{-Inf} unless \code{beta_fast > beta}.}
 
 \item{...}{Additional arguments forwarded to the mark PMF / edge-probability
 functions (e.g. \code{delta}, \code{model_cache}, etc.).}

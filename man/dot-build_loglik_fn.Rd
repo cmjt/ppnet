@@ -17,6 +17,8 @@
   truncation = Inf,
   baseline = NULL,
   excitation = NULL,
+  attachment = NULL,
+  kernel = c("exp", "exp2"),
   ...
 )
 }

@@ -16,6 +16,9 @@ sim_hawkesNet(
   net_step_fun = net_add_event,
   baseline = NULL,
   excitation = NULL,
+  attachment = NULL,
+  kernel = c("exp", "exp2"),
+  frailty_shape = Inf,
   ...
 )
 }
@@ -26,6 +29,17 @@ coefficients go in \code{params}.}
 \item{excitation}{Optional \code{\link[=excitation_spec]{excitation_spec()}} for size- and
 connectedness-dependent excitation (bipartite mark types only); its
 coefficients go in \code{params}.}
+
+\item{attachment}{Optional \code{\link[=attachment_spec]{attachment_spec()}} for which old perps join
+each event (\code{mark_type = "ba_bip"} only); its parameters go in \code{params}.}
+
+\item{kernel}{\code{"exp"} or \code{"exp2"}; see \code{\link[=loglik]{loglik()}}.}
+
+\item{frailty_shape}{With \code{attachment} only: finite values give each perp
+a fixed propensity \eqn{u \sim \text{Gamma}(\text{shape}, \text{shape})}
+(mean 1, variance 1 / shape) multiplying its attachment weight. The
+likelihood has no such term, so this simulates unmodelled differences
+between perps, e.g. to check what the co-offender effect picks up.}
 }
 \description{
 Title
