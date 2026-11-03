@@ -152,71 +152,39 @@ compile_logpmf_attach <- function(events, spec) {
   }
 }
 
-# Internal: a stateful mark simulator for sim_hawkesNet(). It is only called
-# for accepted events, so it updates its own perp state on every call.
-# With finite `frailty_shape` each perp gets a fixed propensity
-# u ~ Gamma(shape, shape) (mean 1) multiplying its weight; the likelihood
-# ignores it, so this simulates unmodelled differences between perps.
+# Internal: a stateful mark simulator for sim_hawkesNet(), backed by the C++
+# simulator in src/attach_sim.cpp. It is only called for accepted events, so
+# each call advances the perp state. With finite `frailty_shape` each perp
+# gets a fixed propensity u ~ Gamma(shape, shape) (mean 1) multiplying its
+# weight; the likelihood ignores it, so this simulates unmodelled differences
+# between perps.
 .make_sim_mark_attach <- function(spec, frailty_shape = Inf) {
   stopifnot(is.numeric(frailty_shape), length(frailty_shape) == 1L, frailty_shape > 0)
-  st <- new.env()
-  st$ids <- character(0)       # perps, in arrival order
-  st$deg <- numeric(0)
-  st$last <- numeric(0)
-  st$u <- numeric(0)
-  st$ties <- list()            # perp -> named vector: co-offender -> latest shared time
-  st$n_nodes <- 0L
+  sim <- NULL
+  perp_ids <- character(0)   # perp id by C++ index
+  n_ids <- 0L                # node ids handed out so far (events and perps)
 
   function(net, t_k, params, ...) {
-    n_old <- length(st$ids)
-    joined <- character(0)
-    if (n_old > 0L) {
-      x <- vapply(st$ids, function(v) {
-        tv <- st$ties[[v]]
-        sum(t_k - tv <= spec$coffender_window)
-      }, numeric(1))
-      w <- st$u * exp(-params$beta_edges * (t_k - st$last))
-      if (spec$degree) w <- w * (st$deg + params$delta)
-      if (spec$coffenders) w <- w * exp(params$theta * .coffender_feature(spec, x))
-      p <- -expm1(-params$m * w / sum(w))
-      joined <- st$ids[stats::runif(n_old) < p]
+    if (is.null(sim)) {
+      sim <<- attach_sim_new(params, spec$degree, spec$coffenders,
+                             spec$coffender_scale == "log1p", spec$coffender_window,
+                             spec$new_perps == "negbin", spec$min_perps == 1L,
+                             frailty_shape, t_k)
     }
+    r <- attach_sim_step(sim, t_k)
 
-    shifted <- spec$min_perps == 1L && length(joined) == 0L
-    mu_new <- if (shifted) params$lambda_new0 else params$lambda_new
-    n_new <- shifted + if (spec$new_perps == "poisson") {
-      stats::rpois(1L, mu_new)
-    } else {
-      stats::rnbinom(1L, size = params$size_new, mu = mu_new)
-    }
-    new_ids <- as.character(st$n_nodes + seq_len(1L + n_new))
-    st$n_nodes <- st$n_nodes + 1L + n_new
+    new_ids <- as.character(n_ids + seq_len(1L + r$n_new))
+    n_ids <<- n_ids + 1L + r$n_new
     event_id <- new_ids[1L]
     new_perps <- new_ids[-1L]
-
-    perps <- c(joined, new_perps)
-    st$ids <- c(st$ids, new_perps)
-    st$deg <- c(st$deg, numeric(n_new))
-    st$last <- c(st$last, numeric(n_new))
-    st$u <- c(st$u, if (is.finite(frailty_shape)) {
-      stats::rgamma(n_new, shape = frailty_shape, rate = frailty_shape)
-    } else {
-      rep(1, n_new)
-    })
-    names(st$deg) <- names(st$last) <- st$ids
-    st$deg[perps] <- st$deg[perps] + 1
-    st$last[perps] <- t_k
-    for (v in perps) {
-      others <- setdiff(perps, v)
-      tv <- st$ties[[v]] %||% numeric(0)
-      tv[others] <- t_k
-      st$ties[[v]] <- tv
-    }
+    joined <- perp_ids[r$joined + 1L]
+    perp_ids <<- c(perp_ids, new_perps)
 
     list(
-      arrivals = data.frame(id = new_ids, role = c("event", rep("perp", n_new)),
+      arrivals = data.frame(id = new_ids, role = c("event", rep("perp", r$n_new)),
                             stringsAsFactors = FALSE),
-      edges = data.frame(i = rep(event_id, length(perps)), j = perps, stringsAsFactors = FALSE)
+      edges = data.frame(i = rep(event_id, length(joined) + r$n_new), j = c(joined, new_perps),
+                         stringsAsFactors = FALSE)
     )
   }
 }

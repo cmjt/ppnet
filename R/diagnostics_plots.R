@@ -21,6 +21,8 @@
 #' @param net0 Optional initial network override.
 #' @param net_step_fun Network update function for network diagnostics.
 #' @param loglog For `degree_ccdf`, plot on log-log axes.
+#' @param baseline,excitation,kernel Temporal model settings, as for
+#'   [loglik()]; used by `lambda`, `tau_hist` and `tau_qq`.
 #' @param ... Passed through to diagnostic helpers.
 #'
 #' @return Invisibly returns the computed diagnostics object.
@@ -35,6 +37,9 @@ plot.events <- function(x,
                         net0 = NULL,
                         net_step_fun = net_add_event,
                         loglog = TRUE,
+                        baseline = NULL,
+                        excitation = NULL,
+                        kernel = "exp",
                         ...) {
   type <- match.arg(type)
 
@@ -49,7 +54,8 @@ plot.events <- function(x,
         stop("plot(events, type = '", type, "'): please supply `params` (needs mu, K, beta).",
              call. = FALSE)
       }
-      d <- diag_temporal(events = x, params = params, T_end = T_end, T0 = T0)
+      d <- diag_temporal(events = x, params = params, T_end = T_end, T0 = T0,
+                         baseline = baseline, excitation = excitation, kernel = kernel)
     } else {
       # count/dt don't need params; give a light-weight diag object
       t <- as.numeric(x$times$t)
@@ -73,6 +79,9 @@ plot.events <- function(x,
 
 #' Plot diagnostics for a fitted HawkesNet model
 #'
+#' The temporal model settings (`baseline`, `excitation`, `kernel`, `T0`,
+#' `T_end`) are taken from the fit unless given.
+#'
 #' @param x A fitted model object. Recommended structure is the list returned by
 #'   `fit_hawkesNet()` with `class(x) = 'hawkesNet_fit'` and the original events
 #'   stored as `x$events`.
@@ -90,8 +99,13 @@ plot.hawkesNet_fit <- function(x,
                                net0 = NULL,
                                net_step_fun = net_add_event,
                                loglog = TRUE,
+                               baseline = x$model$baseline,
+                               excitation = x$model$excitation,
+                               kernel = x$model$kernel %||% "exp",
                                ...) {
   type <- match.arg(type)
+  if (missing(T_end) && !is.null(x$model$T_end)) T_end <- x$model$T_end
+  if (missing(T0) && !is.null(x$model$T0)) T0 <- x$model$T0
 
   ev <- x$events %||% x$ev
   if (is.null(ev) || !.is_events(ev)) {
@@ -122,5 +136,8 @@ plot.hawkesNet_fit <- function(x,
        net0 = net0,
        net_step_fun = net_step_fun,
        loglog = loglog,
+       baseline = baseline,
+       excitation = excitation,
+       kernel = kernel,
        ...)
 }

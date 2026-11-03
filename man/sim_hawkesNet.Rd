@@ -19,6 +19,7 @@ sim_hawkesNet(
   attachment = NULL,
   kernel = c("exp", "exp2"),
   frailty_shape = Inf,
+  return_net = TRUE,
   ...
 )
 }
@@ -40,6 +41,10 @@ a fixed propensity \eqn{u \sim \text{Gamma}(\text{shape}, \text{shape})}
 (mean 1, variance 1 / shape) multiplying its attachment weight. The
 likelihood has no such term, so this simulates unmodelled differences
 between perps, e.g. to check what the co-offender effect picks up.}
+
+\item{return_net}{Logical; also return the final \code{network} object. With
+\code{attachment} it is built once at the end, which is slow for long
+histories, so set \code{FALSE} when only \code{ev} is needed.}
 }
 \description{
 Title

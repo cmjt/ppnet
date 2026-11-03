@@ -22,6 +22,9 @@
 #'   (mean 1, variance 1 / shape) multiplying its attachment weight. The
 #'   likelihood has no such term, so this simulates unmodelled differences
 #'   between perps, e.g. to check what the co-offender effect picks up.
+#' @param return_net Logical; also return the final `network` object. With
+#'   `attachment` it is built once at the end, which is slow for long
+#'   histories, so set `FALSE` when only `ev` is needed.
 #' @param ...
 #'
 #' @return
@@ -41,6 +44,7 @@ sim_hawkesNet <- function(
     attachment = NULL,
     kernel = c("exp", "exp2"),
     frailty_shape = Inf,
+    return_net = TRUE,
     ...
 ) {
   start_time <- proc.time()
@@ -116,8 +120,12 @@ sim_hawkesNet <- function(
 
   t <- T0
 
-  events_t <- numeric(0)
-  accept_probs <- numeric(0)
+  # Grown by doubling: appending with c() each iteration is quadratic.
+  events_t <- numeric(64)
+  n_events <- 0L
+  accept_probs <- numeric(64)
+  n_props <- 0L
+  grow <- function(x, n) if (n > length(x)) c(x, numeric(length(x))) else x
   nodes_rows <- list()
   edges_rows <- list()
 
@@ -141,7 +149,9 @@ sim_hawkesNet <- function(
 
     accepted <- FALSE
     a <- lambda_prop / M
-    accept_probs <- c(accept_probs, a)
+    n_props <- n_props + 1L
+    accept_probs <- grow(accept_probs, n_props)
+    accept_probs[n_props] <- a
     if (debug) message("t=", t_prop, " M=", M, " lambda=", lambda_prop, " a=", a)
 
     if (stats::runif(1) < a) {
@@ -193,7 +203,9 @@ sim_hawkesNet <- function(
         edges_rows[[length(edges_rows) + 1L]] <- df_edges
       }
 
-      net <- net_step_fun(net, arrivals_k, edges_k, t_prop)
+      # The attachment simulator keeps its own state, so the network is only
+      # built at the end, if asked for.
+      if (is.null(attachment)) net <- net_step_fun(net, arrivals_k, edges_k, t_prop)
 
       # Hawkes jump at an accepted event (event-driven ground process)
       if (is.null(excitation)) {
@@ -207,12 +219,14 @@ sim_hawkesNet <- function(
         past <- past[t_prop - events_t[past] <= excitation$connectedness_window]
         z_k <- .excitation_z(excitation, length(perps), length(past))
         g_k <- exp(sum(z_k * a_exc))
-        k <- length(events_t) + 1L
+        k <- n_events + 1L
         for (v in perps) assign(v, c(perp_history[[v]], k), envir = perp_history)
       }
       cache_prop$S <- cache_prop$S + g_k
       cache_f_prop$S <- cache_f_prop$S + 1
-      events_t <- c(events_t, t_prop)
+      n_events <- n_events + 1L
+      events_t <- grow(events_t, n_events)
+      events_t[n_events] <- t_prop
 
       M_after <- intensity(cache_prop, cache_f_prop, mu_max)
     }
@@ -224,24 +238,36 @@ sim_hawkesNet <- function(
     M <- if (accepted) M_after else intensity(cache_prop, cache_f_prop, mu_max)
   }
 
+  events_t <- events_t[seq_len(n_events)]
   out <- list(
-    events = list(n = length(events_t), t = events_t),
-    accept_probs = accept_probs
+    events = list(n = n_events, t = events_t),
+    accept_probs = accept_probs[seq_len(n_props)]
   )
 
-  if (return_ev) {
-    nodes <- if (length(nodes_rows)) do.call(rbind, nodes_rows) else data.frame(id=character(0), time=numeric(0))
-    edges <- if (length(edges_rows)) do.call(rbind, edges_rows) else data.frame(i=character(0), j=character(0), time=numeric(0))
-    out$ev <- make_events(
+  if (return_ev || (!is.null(attachment) && return_net)) {
+    nodes <- if (length(nodes_rows)) .bind_rows_fast(nodes_rows) else data.frame(id=character(0), time=numeric(0))
+    edges <- if (length(edges_rows)) .bind_rows_fast(edges_rows) else data.frame(i=character(0), j=character(0), time=numeric(0))
+    ev <- make_events(
       nodes = nodes,
       edges = edges,
       allow_implicit_birth = (mark_type != "ba_bip")
     )
+    if (return_ev) out$ev <- ev
   }
 
+  if (!is.null(attachment)) net <- if (return_net) create_net_from_events(ev) else NULL
   out$net <- net
 
   print(paste0("Simulation took ", round((proc.time()-start_time)[3],2), " seconds"))
 
   out
+}
+
+# Internal: rbind for many small data.frames with the same columns, column by
+# column (do.call(rbind, ...) is slow for thousands of rows).
+.bind_rows_fast <- function(rows) {
+  cols <- names(rows[[1L]])
+  out <- lapply(cols, function(cl) unlist(lapply(rows, `[[`, cl), use.names = FALSE))
+  names(out) <- cols
+  as.data.frame(out, stringsAsFactors = FALSE)
 }

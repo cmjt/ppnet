@@ -253,6 +253,11 @@ fit_hawkesNet <- function(events,
     events = events
   )
   out$call = match.call()
+  # Model settings, so diagnostics and comparisons can rebuild the model
+  out$model <- list(mark_type = mark_type, T0 = T0,
+                    T_end = T_end %||% max(events$times$t),
+                    baseline = baseline, excitation = excitation,
+                    attachment = attachment, kernel = kernel)
   if (hessian) out$hessian <- fit$hessian
   class(out) <- c("hawkesNet_fit", class(out))
 

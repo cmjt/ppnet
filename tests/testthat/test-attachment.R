@@ -98,3 +98,40 @@ test_that("fit_hawkesNet recovers attachment parameters", {
   true_work <- c(log(c(1.2, 0.3, 1)), 0.6, log(1))
   expect_true(all(abs(est_work - true_work) < 4 * se_work))
 })
+
+test_that("the C++ simulator joins perps with the model's probabilities", {
+  # Given the simulated history, recompute every old perp's join probability
+  # with the brute-force walk and compare observed joins with their sum,
+  # overall and for the most and least active perps.
+  set.seed(75)
+  p <- list(mu = 3, K = 0.3, beta = 1, m = 1.5, beta_edges = 0.3, delta = 0.5,
+            theta = 0.8, lambda_new = 0.6, lambda_new0 = 0.7)
+  sp <- attachment_spec(degree = TRUE, coffenders = TRUE, coffender_window = 4, min_perps = 1)
+  ev <- sim_hawkesNet(p, T_end = 120, mark_type = "ba_bip", attachment = sp, return_net = FALSE)$ev
+
+  arrivals <- nodes_by_event(ev); edges <- edges_by_event(ev); t <- ev$times$t
+  deg <- numeric(0); last <- numeric(0); ties <- list()
+  obs <- pr <- dg <- numeric(0)
+  for (k in seq_along(t)) {
+    nodes_k <- arrivals[[k]]
+    perps <- neighbours_of(as.character(nodes_k$id[nodes_k$role == "event"]), edges[[k]])
+    old <- names(deg)
+    if (length(old) > 0L) {
+      x <- vapply(old, function(v) sum(t[k] - (ties[[v]] %||% numeric(0)) <= 4), numeric(1))
+      w <- (deg[old] + p$delta) * exp(p$theta * log1p(x)) * exp(-p$beta_edges * (t[k] - last[old]))
+      pr <- c(pr, 1 - exp(-p$m * w / sum(w)))
+      obs <- c(obs, old %in% perps)
+      dg <- c(dg, deg[old])
+    }
+    new <- as.character(nodes_k$id[nodes_k$role == "perp"])
+    deg[new] <- 0
+    deg[perps] <- deg[perps] + 1
+    last[perps] <- t[k]
+    for (v in perps) { tv <- ties[[v]] %||% numeric(0); tv[setdiff(perps, v)] <- t[k]; ties[[v]] <- tv }
+  }
+  z <- function(keep) sum(obs[keep] - pr[keep]) / sqrt(sum(pr[keep] * (1 - pr[keep])))
+  expect_gt(sum(obs), 200)
+  expect_lt(abs(z(TRUE)), 4)
+  expect_lt(abs(z(dg >= 3)), 4)
+  expect_lt(abs(z(dg <= 1)), 4)
+})

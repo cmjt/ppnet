@@ -10,6 +10,37 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
+// attach_sim_new
+SEXP attach_sim_new(List params, bool use_degree, bool use_cof, bool log1p_scale, double window, bool negbin, bool min_one, double frailty_shape, double t0);
+RcppExport SEXP _ppnet_attach_sim_new(SEXP paramsSEXP, SEXP use_degreeSEXP, SEXP use_cofSEXP, SEXP log1p_scaleSEXP, SEXP windowSEXP, SEXP negbinSEXP, SEXP min_oneSEXP, SEXP frailty_shapeSEXP, SEXP t0SEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< List >::type params(paramsSEXP);
+    Rcpp::traits::input_parameter< bool >::type use_degree(use_degreeSEXP);
+    Rcpp::traits::input_parameter< bool >::type use_cof(use_cofSEXP);
+    Rcpp::traits::input_parameter< bool >::type log1p_scale(log1p_scaleSEXP);
+    Rcpp::traits::input_parameter< double >::type window(windowSEXP);
+    Rcpp::traits::input_parameter< bool >::type negbin(negbinSEXP);
+    Rcpp::traits::input_parameter< bool >::type min_one(min_oneSEXP);
+    Rcpp::traits::input_parameter< double >::type frailty_shape(frailty_shapeSEXP);
+    Rcpp::traits::input_parameter< double >::type t0(t0SEXP);
+    rcpp_result_gen = Rcpp::wrap(attach_sim_new(params, use_degree, use_cof, log1p_scale, window, negbin, min_one, frailty_shape, t0));
+    return rcpp_result_gen;
+END_RCPP
+}
+// attach_sim_step
+List attach_sim_step(SEXP ptr, double t);
+RcppExport SEXP _ppnet_attach_sim_step(SEXP ptrSEXP, SEXP tSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type ptr(ptrSEXP);
+    Rcpp::traits::input_parameter< double >::type t(tSEXP);
+    rcpp_result_gen = Rcpp::wrap(attach_sim_step(ptr, t));
+    return rcpp_result_gen;
+END_RCPP
+}
 // attach_history_cpp
 List attach_history_cpp(NumericVector t, IntegerVector node_ptr, IntegerVector edge_ptr, IntegerVector edge_i, IntegerVector edge_j, IntegerVector focal, int n_nodes, double window);
 RcppExport SEXP _ppnet_attach_history_cpp(SEXP tSEXP, SEXP node_ptrSEXP, SEXP edge_ptrSEXP, SEXP edge_iSEXP, SEXP edge_jSEXP, SEXP focalSEXP, SEXP n_nodesSEXP, SEXP windowSEXP) {
@@ -112,6 +143,8 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
+    {"_ppnet_attach_sim_new", (DL_FUNC) &_ppnet_attach_sim_new, 9},
+    {"_ppnet_attach_sim_step", (DL_FUNC) &_ppnet_attach_sim_step, 2},
     {"_ppnet_attach_history_cpp", (DL_FUNC) &_ppnet_attach_history_cpp, 8},
     {"_ppnet_attach_ll_cpp", (DL_FUNC) &_ppnet_attach_ll_cpp, 14},
     {"_ppnet_mark_ll_attach_cpp", (DL_FUNC) &_ppnet_mark_ll_attach_cpp, 11},

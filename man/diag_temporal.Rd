@@ -4,32 +4,46 @@
 \alias{diag_temporal}
 \title{Temporal diagnostics for HawkesNet}
 \usage{
-diag_temporal(events, params, T_end = NULL, T0 = 0)
+diag_temporal(
+  events,
+  params,
+  T_end = NULL,
+  T0 = 0,
+  baseline = NULL,
+  excitation = NULL,
+  kernel = c("exp", "exp2")
+)
 }
 \arguments{
-\item{events}{An events object created by \code{make_events()}. Must contain
-\code{events$times$t} (numeric event times).}
+\item{events}{An events object created by \code{make_events()}.}
 
-\item{params}{Named list of model parameters on the natural scale. Must
-contain \code{mu}, \code{K}, \code{beta}.}
+\item{params}{Named list of model parameters on the natural scale, as for
+\code{\link[=loglik]{loglik()}}: \code{mu}, \code{K}, \code{beta}, plus any baseline coefficients,
+excitation coefficients and \code{K_fast}, \code{beta_fast}.}
 
 \item{T_end}{Optional end time for diagnostics window. Defaults to last event.}
 
 \item{T0}{Start time for diagnostics window.}
+
+\item{baseline, excitation, kernel}{As for \code{\link[=loglik]{loglik()}}.}
 }
 \value{
 A list with components:
 \describe{
 \item{t}{Event times.}
 \item{dt}{Inter-arrival times (first is \code{t[1] - T0}).}
-\item{lambda}{Temporal intensity evaluated just before each event time.}
-\item{comp_inc}{Compensator increments over each gap (same length as \code{t}).}
-\item{tau}{Time-rescaled increments (should be Exp(1) under correct temporal model).}
-\item{meta}{List with \code{T0}, \code{T_end}, and basic checks.}
+\item{lambda}{Intensity just before each event time.}
+\item{comp_inc}{Compensator over each gap ending at an event.}
+\item{tau}{Time-rescaled increments, equal to \code{comp_inc}; Exp(1) under
+a correct temporal model.}
+\item{meta}{List with \code{T0}, \code{T_end}, \code{comp_tail} (compensator from the
+last event to \code{T_end}) and \code{ok}.}
 }
 }
 \description{
-Computes basic time-series diagnostics for the exponential Hawkes temporal
-component at observed event times, including inter-arrival times, intensity
-at events, compensator increments, and time-rescaled residuals.
+Computes time-series diagnostics for the temporal part of the model at the
+observed event times: inter-arrival times, the intensity just before each
+event, and the compensator over each gap. Under a correctly specified
+model the compensator increments \code{tau} are independent Exp(1) (the
+time-rescaling theorem), which \code{plot_temporal_diag()} checks.
 }

@@ -14,6 +14,9 @@
   net0 = NULL,
   net_step_fun = net_add_event,
   loglog = TRUE,
+  baseline = NULL,
+  excitation = NULL,
+  kernel = "exp",
   ...
 )
 }
@@ -38,6 +41,9 @@
 \item{net_step_fun}{Network update function for network diagnostics.}
 
 \item{loglog}{For \code{degree_ccdf}, plot on log-log axes.}
+
+\item{baseline, excitation, kernel}{Temporal model settings, as for
+\code{\link[=loglik]{loglik()}}; used by \code{lambda}, \code{tau_hist} and \code{tau_qq}.}
 
 \item{...}{Passed through to diagnostic helpers.}
 }

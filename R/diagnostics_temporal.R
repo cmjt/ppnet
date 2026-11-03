@@ -2,28 +2,35 @@
 
 #' Temporal diagnostics for HawkesNet
 #'
-#' Computes basic time-series diagnostics for the exponential Hawkes temporal
-#' component at observed event times, including inter-arrival times, intensity
-#' at events, compensator increments, and time-rescaled residuals.
+#' Computes time-series diagnostics for the temporal part of the model at the
+#' observed event times: inter-arrival times, the intensity just before each
+#' event, and the compensator over each gap. Under a correctly specified
+#' model the compensator increments `tau` are independent Exp(1) (the
+#' time-rescaling theorem), which `plot_temporal_diag()` checks.
 #'
-#' @param events An events object created by `make_events()`. Must contain
-#'   `events$times$t` (numeric event times).
-#' @param params Named list of model parameters on the natural scale. Must
-#'   contain `mu`, `K`, `beta`.
+#' @param events An events object created by `make_events()`.
+#' @param params Named list of model parameters on the natural scale, as for
+#'   [loglik()]: `mu`, `K`, `beta`, plus any baseline coefficients,
+#'   excitation coefficients and `K_fast`, `beta_fast`.
 #' @param T_end Optional end time for diagnostics window. Defaults to last event.
 #' @param T0 Start time for diagnostics window.
+#' @param baseline,excitation,kernel As for [loglik()].
 #'
 #' @return A list with components:
 #' \describe{
 #'   \item{t}{Event times.}
 #'   \item{dt}{Inter-arrival times (first is `t[1] - T0`).}
-#'   \item{lambda}{Temporal intensity evaluated just before each event time.}
-#'   \item{comp_inc}{Compensator increments over each gap (same length as `t`).}
-#'   \item{tau}{Time-rescaled increments (should be Exp(1) under correct temporal model).}
-#'   \item{meta}{List with `T0`, `T_end`, and basic checks.}
+#'   \item{lambda}{Intensity just before each event time.}
+#'   \item{comp_inc}{Compensator over each gap ending at an event.}
+#'   \item{tau}{Time-rescaled increments, equal to `comp_inc`; Exp(1) under
+#'     a correct temporal model.}
+#'   \item{meta}{List with `T0`, `T_end`, `comp_tail` (compensator from the
+#'     last event to `T_end`) and `ok`.}
 #' }
 #' @export
-diag_temporal <- function(events, params, T_end = NULL, T0 = 0) {
+diag_temporal <- function(events, params, T_end = NULL, T0 = 0,
+                          baseline = NULL, excitation = NULL, kernel = c("exp", "exp2")) {
+  kernel <- match.arg(kernel)
   if (is.null(events) || is.null(events$times) || !"t" %in% names(events$times)) {
     stop("diag_temporal(): `events$times$t` is required.", call. = FALSE)
   }
@@ -40,79 +47,72 @@ diag_temporal <- function(events, params, T_end = NULL, T0 = 0) {
     ))
   }
   if (any(!is.finite(t))) stop("diag_temporal(): non-finite event times.", call. = FALSE)
-  if (is.unsorted(t, strictly = TRUE) && any(diff(t) < 0)) {
-    stop("diag_temporal(): event times must be nondecreasing.", call. = FALSE)
+  if (any(diff(t) < 0)) stop("diag_temporal(): event times must be nondecreasing.", call. = FALSE)
+  if (is.null(T_end)) T_end <- max(t)
+  if (!is.finite(T_end) || T_end < max(t)) stop("diag_temporal(): T_end must be >= max(t).", call. = FALSE)
+
+  n <- length(t)
+  dt <- c(t[1] - T0, diff(t))
+  invalid <- function(note) {
+    list(t = t, dt = dt, lambda = rep(NA_real_, n), comp_inc = rep(NA_real_, n),
+         tau = rep(NA_real_, n), meta = list(T0 = T0, T_end = T_end, ok = FALSE, note = note))
   }
 
   mu <- params$mu
   K <- params$K
   beta <- params$beta
   if (!is.finite(mu) || !is.finite(K) || !is.finite(beta) || mu <= 0 || K < 0 || beta <= 0) {
-    return(list(
-      t = t,
-      dt = c(t[1] - T0, diff(t)),
-      lambda = rep(NA_real_, length(t)),
-      comp_inc = rep(NA_real_, length(t)),
-      tau = rep(NA_real_, length(t)),
-      meta = list(T0 = T0, T_end = T_end, ok = FALSE, note = "Invalid mu/K/beta.")
-    ))
+    return(invalid("Invalid mu/K/beta."))
   }
 
-  if (is.null(T_end)) T_end <- max(t)
-  if (!is.finite(T_end) || T_end < max(t)) stop("diag_temporal(): T_end must be >= max(t).", call. = FALSE)
-
-  # Helpers (duplicated here to keep this file standalone)
-  cache_init <- function(T0) list(last_t = T0, S = 0.0)
-  cache_decay_to <- function(cache, t_new, beta) {
-    dt <- t_new - cache$last_t
-    if (dt < 0) stop("diag_temporal(): times must be increasing.", call. = FALSE)
-    cache$S <- exp(-beta * dt) * cache$S
-    cache$last_t <- t_new
-    cache
-  }
-  lambda_from_cache <- function(cache, mu, K) mu + K * cache$S
-  compensator_inc <- function(dt, mu, K, beta, S_post_prev) {
-    if (dt < 0) stop("diag_temporal(): times must be increasing.", call. = FALSE)
-    mu * dt + (K / beta) * S_post_prev * (1 - exp(-beta * dt))
+  # Baseline at the events, and its integral over each gap (last: to T_end)
+  lo <- c(T0, t)
+  hi <- c(t, T_end)
+  if (is.null(baseline)) {
+    mu_ev <- rep.int(mu, n)
+    base_inc <- mu * (hi - lo)
+  } else {
+    b <- .baseline_coefs(baseline, params)
+    mu_ev <- mu * exp(drop(.baseline_design(baseline, t) %*% b))
+    base_inc <- mu * .baseline_integral(baseline, b, lo, hi)
   }
 
-  n <- length(t)
-  dt <- c(t[1] - T0, diff(t))
-  lambda <- numeric(n)
-  comp_inc <- numeric(n)
-
-  cache <- cache_init(T0)
-  t_prev <- T0
-  S_post_prev <- 0.0
-
-  for (k in seq_len(n)) {
-    t_k <- t[k]
-
-    # Compensator over gap (t_prev, t_k)
-    comp_inc[k] <- compensator_inc(
-      dt = t_k - t_prev, mu = mu, K = K, beta = beta, S_post_prev = S_post_prev
-    )
-
-    # Decay cache to just before t_k
-    cache <- cache_decay_to(cache, t_k, beta = beta)
-    lambda[k] <- lambda_from_cache(cache, mu = mu, K = K)
-
-    # Update post-event: jump by 1 at event time (standard Hawkes)
-    cache$S <- cache$S + 1
-    t_prev <- t_k
-    S_post_prev <- cache$S
+  # Kernel components: (K, beta, jump sizes); excitation scales the slow one
+  g <- if (is.null(excitation)) rep.int(1, n) else {
+    exp(drop(.excitation_design(excitation, events) %*% .excitation_coefs(excitation, params)))
+  }
+  comps <- list(list(K = K, beta = beta, g = g))
+  if (kernel == "exp2") {
+    if (is.null(params$K_fast) || is.null(params$beta_fast)) {
+      stop("diag_temporal(): kernel = 'exp2' needs K_fast and beta_fast.", call. = FALSE)
+    }
+    comps[[2L]] <- list(K = params$K_fast, beta = params$beta_fast, g = rep.int(1, n))
   }
 
-  # Time-rescaled increments (tau_k = compensator increment over each gap)
-  tau <- comp_inc
+  exc_inc <- numeric(n + 1L)
+  lambda_exc <- numeric(n)
+  for (cp in comps) {
+    S <- 0  # excitation sum just after the previous event
+    for (k in seq_len(n + 1L)) {
+      d <- hi[k] - lo[k]
+      exc_inc[k] <- exc_inc[k] + (cp$K / cp$beta) * S * (-expm1(-cp$beta * d))
+      if (k <= n) {
+        S <- S * exp(-cp$beta * d)
+        lambda_exc[k] <- lambda_exc[k] + cp$K * S
+        S <- S + cp$g[k]
+      }
+    }
+  }
 
+  comp <- base_inc + exc_inc
+  comp_inc <- comp[seq_len(n)]
   list(
     t = t,
     dt = dt,
-    lambda = lambda,
+    lambda = mu_ev + lambda_exc,
     comp_inc = comp_inc,
-    tau = tau,
-    meta = list(T0 = T0, T_end = T_end, ok = TRUE)
+    tau = comp_inc,
+    meta = list(T0 = T0, T_end = T_end, comp_tail = comp[n + 1L], ok = TRUE)
   )
 }
 

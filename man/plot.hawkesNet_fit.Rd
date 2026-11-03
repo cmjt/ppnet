@@ -14,6 +14,9 @@
   net0 = NULL,
   net_step_fun = net_add_event,
   loglog = TRUE,
+  baseline = x$model$baseline,
+  excitation = x$model$excitation,
+  kernel = x$model$kernel \%||\% "exp",
   ...
 )
 }
@@ -41,11 +44,15 @@ stored as \code{x$events}.}
 
 \item{loglog}{For \code{degree_ccdf}, plot on log-log axes.}
 
+\item{baseline, excitation, kernel}{Temporal model settings, as for
+\code{\link[=loglik]{loglik()}}; used by \code{lambda}, \code{tau_hist} and \code{tau_qq}.}
+
 \item{...}{Passed through to diagnostic helpers.}
 }
 \value{
 Invisibly returns the computed diagnostics object.
 }
 \description{
-Plot diagnostics for a fitted HawkesNet model
+The temporal model settings (\code{baseline}, \code{excitation}, \code{kernel}, \code{T0},
+\code{T_end}) are taken from the fit unless given.
 }

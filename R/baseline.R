@@ -137,3 +137,25 @@ baseline_coef_names <- function(spec) {
   }
   params$mu * exp(bound)
 }
+
+# Internal: integral of exp(x(t)' b) over each interval [lo_i, hi_i], with
+# the same panel width and Gauss-Legendre rule as .baseline_quadrature().
+.baseline_integral <- function(spec, b, lo, hi, nodes = 8L) {
+  len <- hi - lo
+  h <- max(len, 0)
+  if (length(spec$periods) > 0L) h <- min(h, min(spec$periods / spec$harmonics) / 2)
+  if (h <= 0) return(numeric(length(lo)))
+  n_panels <- pmax(1L, ceiling(len / h))
+  width <- len / n_panels
+
+  idx <- rep(seq_along(lo), n_panels)
+  left <- lo[idx] + (sequence(n_panels) - 1L) * width[idx]
+  gl <- .gauss_legendre(nodes)
+  s <- as.vector(outer((gl$x + 1) / 2, width[idx]) + rep(left, each = nodes))
+  w <- as.vector(outer(gl$w / 2, width[idx]))
+  vals <- w * exp(drop(.baseline_design(spec, s) %*% b))
+  out <- numeric(length(lo))
+  sums <- rowsum(vals, rep(idx, each = nodes))
+  out[as.integer(rownames(sums))] <- sums[, 1]
+  out
+}
