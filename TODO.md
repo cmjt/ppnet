@@ -64,30 +64,31 @@
 
 ## Towards a change-statistic (CS) version of the attachment model
 
-The current CS-bip kernel uses `ernm` change statistics on `network` objects, a
-logistic link with decay since a perp's first event, and stores a matrix per
-(event, old perp) pair. To bring it in line with the attachment model:
+Change statistics are the change in counts of bipartite configurations when
+the edge (event k, perp v) is added. Decisions so far: own-history
+configurations first, normalised link `p_v = 1 - exp(-m w_v / W)` (linear
+cost, nests the current model, works with the random effect); within-event
+configurations, when added, by pseudo-likelihood.
 
-- [ ] **Change-statistic weights.** Generalise the attachment weight to
-  `log w_v = theta' s_v(t) - beta_e (t - last_v)`, where `s_v(t)` are bipartite
-  change statistics for adding the edge (event, `v`): attendance count,
-  co-offender count (optionally windowed), perp covariates. The current model
-  is the case `s_v = (log(d_v + delta), h(x_v))` with the first coefficient
-  fixed at 1, so it stays nested.
-- [ ] **Compute the statistics in the C++ walk**, not through `ernm`, keeping
-  `ernm` only as a reference in tests (statistics match `computeChangeStats()`
-  on small networks).
-- [ ] **Decide how to handle event-dependent statistics.** Statistics that depend
-  only on `v`'s own history keep joins independent given the past, so the
-  `p_v = 1 - exp(-m w_v / W)` link and the running sum `W` still give linear
-  cost. Statistics that depend on who else joins the same event (e.g. "`v` has
-  co-offended with another perp at this event", shared partners) make joins
-  within an event dependent: they need an ordering of joins within the event,
-  or an ERGM-style within-event model with its own normalising constant (or a
-  pseudo-likelihood), and the linear-cost trick no longer applies.
-- [ ] **Link function.** Keep the normalised `m w_v / W` link (linear cost,
-  `m` interpretable as returning perps per event) or the current unnormalised
-  logistic link (absolute probabilities, but every evaluation touches every
-  (event, old perp) pair). Compare both on simulated data.
-- [ ] **Tests as for the attachment model:** brute-force likelihood, gradients
-  against central differences, recovery from simulation.
+- [x] **Vector of change statistics.** `log w_v = log(d_v + delta) +
+  sum_j theta_j s_vj - beta_e (t - last_v)`; the C++ walk, gradients and
+  random-effect integrals take a matrix of statistics, so new own-history
+  statistics only need a column.
+- [x] **3-paths** (`attachment_spec(paths = TRUE)`, `theta_paths`): the
+  3-paths k - v - j - u the edge completes, i.e. v's co-offenders counted with
+  multiplicity, `sum_j (n_j - 1)` over v's events in `coffender_window`, on
+  the `coffender_scale`. Computed in the C++ history pass and the simulator;
+  brute-force, gradient, simulator-calibration and recovery tests.
+  `theta_paths` is strongly correlated with `delta` (3-paths are roughly
+  attendance times group size - 1), so it is only well determined when group
+  sizes vary.
+- [ ] **Fit to the real data**: `paths` alone, with `coffenders` (distinct
+  ties vs repeat co-offending with the same partners), and with the random
+  effect.
+- [ ] **Within-event configurations** (4-cycles: past co-offenders at the
+  same event; event stars) by pseudo-likelihood: each (k, v) scored given the
+  other perps at event k. Not an exact likelihood, so no LR/AIC comparisons
+  with the exact models.
+- [ ] **Perp covariates** as nodal change statistics, if wanted.
+- [ ] **Check the old `cs_bip` kernel**: does it score each candidate edge on
+  the pre-event network (so within-event configurations never register)?

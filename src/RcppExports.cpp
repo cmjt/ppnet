@@ -11,21 +11,22 @@ Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
 // attach_sim_new
-SEXP attach_sim_new(List params, bool use_degree, bool use_cof, bool log1p_scale, double window, bool negbin, bool min_one, double random_effect_shape, double t0);
-RcppExport SEXP _ppnet_attach_sim_new(SEXP paramsSEXP, SEXP use_degreeSEXP, SEXP use_cofSEXP, SEXP log1p_scaleSEXP, SEXP windowSEXP, SEXP negbinSEXP, SEXP min_oneSEXP, SEXP random_effect_shapeSEXP, SEXP t0SEXP) {
+SEXP attach_sim_new(List params, bool use_degree, bool use_cof, bool use_paths, bool log1p_scale, double window, bool negbin, bool min_one, double random_effect_shape, double t0);
+RcppExport SEXP _ppnet_attach_sim_new(SEXP paramsSEXP, SEXP use_degreeSEXP, SEXP use_cofSEXP, SEXP use_pathsSEXP, SEXP log1p_scaleSEXP, SEXP windowSEXP, SEXP negbinSEXP, SEXP min_oneSEXP, SEXP random_effect_shapeSEXP, SEXP t0SEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< List >::type params(paramsSEXP);
     Rcpp::traits::input_parameter< bool >::type use_degree(use_degreeSEXP);
     Rcpp::traits::input_parameter< bool >::type use_cof(use_cofSEXP);
+    Rcpp::traits::input_parameter< bool >::type use_paths(use_pathsSEXP);
     Rcpp::traits::input_parameter< bool >::type log1p_scale(log1p_scaleSEXP);
     Rcpp::traits::input_parameter< double >::type window(windowSEXP);
     Rcpp::traits::input_parameter< bool >::type negbin(negbinSEXP);
     Rcpp::traits::input_parameter< bool >::type min_one(min_oneSEXP);
     Rcpp::traits::input_parameter< double >::type random_effect_shape(random_effect_shapeSEXP);
     Rcpp::traits::input_parameter< double >::type t0(t0SEXP);
-    rcpp_result_gen = Rcpp::wrap(attach_sim_new(params, use_degree, use_cof, log1p_scale, window, negbin, min_one, random_effect_shape, t0));
+    rcpp_result_gen = Rcpp::wrap(attach_sim_new(params, use_degree, use_cof, use_paths, log1p_scale, window, negbin, min_one, random_effect_shape, t0));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -60,7 +61,7 @@ BEGIN_RCPP
 END_RCPP
 }
 // attach_ll_cpp
-NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr, IntegerVector upd_node, IntegerVector upd_deg, NumericVector upd_last, NumericVector upd_feat, IntegerVector obs_ptr, IntegerVector obs_node, int n_nodes, double m, double beta, double delta, double theta, bool use_degree, double random_effect_var, NumericVector gl_x, NumericVector gl_w);
+NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr, IntegerVector upd_node, IntegerVector upd_deg, NumericVector upd_last, NumericMatrix upd_feat, IntegerVector obs_ptr, IntegerVector obs_node, int n_nodes, double m, double beta, double delta, NumericVector theta, bool use_degree, double random_effect_var, NumericVector gl_x, NumericVector gl_w);
 RcppExport SEXP _ppnet_attach_ll_cpp(SEXP tSEXP, SEXP upd_ptrSEXP, SEXP upd_nodeSEXP, SEXP upd_degSEXP, SEXP upd_lastSEXP, SEXP upd_featSEXP, SEXP obs_ptrSEXP, SEXP obs_nodeSEXP, SEXP n_nodesSEXP, SEXP mSEXP, SEXP betaSEXP, SEXP deltaSEXP, SEXP thetaSEXP, SEXP use_degreeSEXP, SEXP random_effect_varSEXP, SEXP gl_xSEXP, SEXP gl_wSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
@@ -70,14 +71,14 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< IntegerVector >::type upd_node(upd_nodeSEXP);
     Rcpp::traits::input_parameter< IntegerVector >::type upd_deg(upd_degSEXP);
     Rcpp::traits::input_parameter< NumericVector >::type upd_last(upd_lastSEXP);
-    Rcpp::traits::input_parameter< NumericVector >::type upd_feat(upd_featSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type upd_feat(upd_featSEXP);
     Rcpp::traits::input_parameter< IntegerVector >::type obs_ptr(obs_ptrSEXP);
     Rcpp::traits::input_parameter< IntegerVector >::type obs_node(obs_nodeSEXP);
     Rcpp::traits::input_parameter< int >::type n_nodes(n_nodesSEXP);
     Rcpp::traits::input_parameter< double >::type m(mSEXP);
     Rcpp::traits::input_parameter< double >::type beta(betaSEXP);
     Rcpp::traits::input_parameter< double >::type delta(deltaSEXP);
-    Rcpp::traits::input_parameter< double >::type theta(thetaSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type theta(thetaSEXP);
     Rcpp::traits::input_parameter< bool >::type use_degree(use_degreeSEXP);
     Rcpp::traits::input_parameter< double >::type random_effect_var(random_effect_varSEXP);
     Rcpp::traits::input_parameter< NumericVector >::type gl_x(gl_xSEXP);
@@ -146,7 +147,7 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_ppnet_attach_sim_new", (DL_FUNC) &_ppnet_attach_sim_new, 9},
+    {"_ppnet_attach_sim_new", (DL_FUNC) &_ppnet_attach_sim_new, 10},
     {"_ppnet_attach_sim_step", (DL_FUNC) &_ppnet_attach_sim_step, 2},
     {"_ppnet_attach_history_cpp", (DL_FUNC) &_ppnet_attach_history_cpp, 8},
     {"_ppnet_attach_ll_cpp", (DL_FUNC) &_ppnet_attach_ll_cpp, 17},

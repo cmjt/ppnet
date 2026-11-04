@@ -7,7 +7,7 @@
 // each hit to perp v with probability u_v w_v / sum_u u_u w_u; a perp joins
 // if it gets at least one hit. The decay exp(-beta_e t) is common to all
 // weights and cancels from both ratios, so each perp's weight
-//   w_v = (d_v + delta) exp(theta x_v) exp(beta_e (last_v - t_ref))
+//   w_v = (d_v + delta) exp(theta x_v + theta_paths y_v) exp(beta_e (last_v - t_ref))
 // changes only when its own state does. w and u w are kept in Fenwick trees,
 // so each event costs O((m + changes) log n_perps). Random numbers come from
 // R, so set.seed() makes runs reproducible.
@@ -65,11 +65,15 @@ struct Fenwick {
 
 struct AttachSim {
   // parameters
-  double m, beta_e, delta, theta, window, lambda_new, lambda_new0, size_new, random_effect_shape;
-  bool use_degree, use_cof, log1p_scale, negbin, min_one;
-  // perp state
+  double m, beta_e, delta, theta, theta_p, window, lambda_new, lambda_new0, size_new,
+    random_effect_shape;
+  bool use_degree, use_cof, use_paths, log1p_scale, negbin, min_one;
+  // perp state: x distinct co-offenders, y 3-paths (co-offenders with
+  // multiplicity), both over events within the window
   std::vector<double> u, last;
-  std::vector<int> deg, x;
+  std::vector<int> deg, x, y;
+  // events within the window that still give 3-paths: (time, perps)
+  std::queue<std::pair<double, std::vector<int> > > recent;
   Fenwick s, s0;  // u w for sampling, w for W
   double t_ref;
   std::unordered_map<long long, double> tie;
@@ -79,8 +83,9 @@ struct AttachSim {
   int stamp_id;
 
   double weight(int v) const {
-    const double h = log1p_scale ? std::log1p((double)x[v]) : (double)x[v];
-    return (use_degree ? deg[v] + delta : 1.0) * (use_cof ? std::exp(theta * h) : 1.0) *
+    auto h = [&](int n) { return log1p_scale ? std::log1p((double)n) : (double)n; };
+    const double eta = (use_cof ? theta * h(x[v]) : 0.0) + (use_paths ? theta_p * h(y[v]) : 0.0);
+    return (use_degree ? deg[v] + delta : 1.0) * std::exp(eta) *
       std::exp(beta_e * (last[v] - t_ref));
   }
   void update(int v) {
@@ -100,7 +105,7 @@ struct AttachSim {
 }  // namespace
 
 // [[Rcpp::export]]
-SEXP attach_sim_new(List params, bool use_degree, bool use_cof, bool log1p_scale,
+SEXP attach_sim_new(List params, bool use_degree, bool use_cof, bool use_paths, bool log1p_scale,
                     double window, bool negbin, bool min_one, double random_effect_shape,
                     double t0) {
   AttachSim* sim = new AttachSim();
@@ -111,11 +116,13 @@ SEXP attach_sim_new(List params, bool use_degree, bool use_cof, bool log1p_scale
   sim->beta_e = get("beta_edges", NA_REAL);
   sim->delta = get("delta", 0.0);
   sim->theta = get("theta", 0.0);
+  sim->theta_p = get("theta_paths", 0.0);
   sim->lambda_new = get("lambda_new", NA_REAL);
   sim->lambda_new0 = get("lambda_new0", 0.0);
   sim->size_new = get("size_new", 1.0);
   sim->use_degree = use_degree;
   sim->use_cof = use_cof;
+  sim->use_paths = use_paths;
   sim->log1p_scale = log1p_scale;
   sim->window = window;
   sim->negbin = negbin;
@@ -167,6 +174,15 @@ List attach_sim_step(SEXP ptr, double t) {
     touch(hi);
     S.tie.erase(it);
   }
+  // Events more than `window` ago no longer give 3-paths.
+  while (!S.recent.empty() && S.recent.front().first + S.window < t) {
+    const std::vector<int>& pj = S.recent.front().second;
+    for (size_t a = 0; a < pj.size(); ++a) {
+      S.y[pj[a]] -= (int)pj.size() - 1;
+      touch(pj[a]);
+    }
+    S.recent.pop();
+  }
   for (size_t a = 0; a < changed.size(); ++a) S.update(changed[a]);
 
   // Old perps: Poisson(m sum u w / W) hits spread in proportion to u w.
@@ -193,6 +209,7 @@ List attach_sim_step(SEXP ptr, double t) {
     S.last.push_back(t);
     S.deg.push_back(0);
     S.x.push_back(0);
+    S.y.push_back(0);
     S.stamp.push_back(-1);
     S.s.push(0.0);
     S.s0.push(0.0);
@@ -206,6 +223,7 @@ List attach_sim_step(SEXP ptr, double t) {
   for (size_t a = 0; a < perps.size(); ++a) {
     const int v = perps[a];
     ++S.deg[v];
+    S.y[v] += (int)perps.size() - 1;
     S.last[v] = t;
     touch(v);
     for (size_t b = a + 1; b < perps.size(); ++b) {
@@ -220,6 +238,7 @@ List attach_sim_step(SEXP ptr, double t) {
       if (std::isfinite(S.window)) S.expiries.push(AttachSim::Expiry(t + S.window, k));
     }
   }
+  if (std::isfinite(S.window) && perps.size() > 1) S.recent.push(std::make_pair(t, perps));
   for (size_t a = 0; a < changed.size(); ++a) S.update(changed[a]);
 
   return List::create(_["joined"] = wrap(joined), _["n_new"] = n_new);

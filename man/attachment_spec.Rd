@@ -9,6 +9,7 @@ attachment_spec(
   coffenders = FALSE,
   coffender_scale = c("log1p", "linear"),
   coffender_window = Inf,
+  paths = FALSE,
   new_perps = c("poisson", "negbin"),
   min_perps = 0,
   random_effect = FALSE,
@@ -20,13 +21,17 @@ attachment_spec(
 \eqn{d_v \ge 1}, so \code{delta = 0} (joins proportional to past attendance)
 is allowed; fix it there with \code{fixed_params} if the fit runs to 0.}
 
-\item{coffenders}{Logical; include \eqn{e^{\theta x_v}}.}
+\item{coffenders}{Logical; include \eqn{e^{\theta x_v}} (distinct
+co-offenders).}
 
 \item{coffender_scale}{\code{"log1p"} (default) for \eqn{h(n) = \log(1 + n)} or
-\code{"linear"} for \eqn{h(n) = n}.}
+\code{"linear"} for \eqn{h(n) = n}, for both \code{coffenders} and \code{paths}.}
 
-\item{coffender_window}{Only co-offenders sharing an event at most this long
-before count. \code{Inf} (the default) counts all.}
+\item{coffender_window}{Only events at most this long before count towards
+\code{coffenders} and \code{paths}. \code{Inf} (the default) counts all.}
+
+\item{paths}{Logical; include \eqn{e^{\theta_p y_v}} (3-paths, i.e.
+co-offenders with multiplicity).}
 
 \item{new_perps}{Distribution of the new-perp count: \code{"poisson"} (default)
 or \code{"negbin"}.}
@@ -46,10 +51,23 @@ An object of class \code{attachment_spec}.
 \description{
 Replaces the BA-bip rule for which old perps join an event. At event
 \eqn{k} each earlier perp \eqn{v} has weight
-\deqn{w_v = (d_v + \delta)\, e^{\theta x_v}\, e^{-\beta_e (t_k - \ell_v)}}
+\deqn{w_v = (d_v + \delta)\, e^{\theta x_v + \theta_p y_v}\,
+  e^{-\beta_e (t_k - \ell_v)}}
 where \eqn{d_v} is the number of events \eqn{v} has attended, \eqn{\ell_v}
-the time of the latest, and \eqn{x_v} its co-offender feature, \eqn{h} of
-the number of distinct perps it has shared an event with. It joins
+the time of the latest, and \eqn{x_v} and \eqn{y_v} are change statistics
+for adding the edge (event \eqn{k}, \eqn{v}), from \eqn{v}'s own history:
+\itemize{
+\item \eqn{x_v = h(\cdot)} of the number of distinct perps \eqn{v} has
+shared an event with (\code{coffenders});
+\item \eqn{y_v = h(\cdot)} of the number of bipartite 3-paths
+\eqn{k - v - j - u} the edge completes, one for each earlier event
+\eqn{j} of \eqn{v} and other perp \eqn{u} at it: co-offenders counted
+with multiplicity, \eqn{\sum_j (n_j - 1)} (\code{paths}).
+}
+Both count only events at most \code{coffender_window} before \eqn{t_k}.
+Configurations that involve other perps at event \eqn{k} itself (event
+stars, 4-cycles) are not included, so joins stay independent given the
+past. It joins
 independently with probability
 \deqn{p_v = 1 - \exp(-m\, w_v / W), \qquad W = \textstyle\sum_u w_u,}
 so \code{m} is close to the expected number of returning perps per event when
@@ -79,12 +97,11 @@ that holds the integrand, located from its mode (Gauss-Legendre panels of
 linear in events and joins. \code{random_effect_var = 0} gives the model
 without the random effect exactly.
 
-Parameters: \code{m}, \code{beta_edges} (\eqn{\beta_e}), \code{delta} (if \code{degree}) and
-\code{theta} (if \code{coffenders}), then \code{lambda_new}, \code{lambda_new0} (if
+Parameters: \code{m}, \code{beta_edges} (\eqn{\beta_e}), \code{delta} (if \code{degree}),
+\code{theta} (if \code{coffenders}) and \code{theta_paths} (\eqn{\theta_p}, if \code{paths}), then \code{lambda_new}, \code{lambda_new0} (if
 \code{min_perps = 1}), \code{size_new} (if \code{"negbin"}) and \code{random_effect_var} (if
-\code{random_effect}); see \code{\link[=attachment_param_names]{attachment_param_names()}}. With \code{degree = FALSE} and
-\code{coffenders = FALSE}
-the weights depend on recency only.
+\code{random_effect}); see \code{\link[=attachment_param_names]{attachment_param_names()}}. With \code{degree},
+\code{coffenders} and \code{paths} all \code{FALSE} the weights depend on recency only.
 
 Since \eqn{\sum_v m w_v / W = m}, each evaluation needs only the running
 sum \eqn{W}, so its cost grows with the number of events and perp

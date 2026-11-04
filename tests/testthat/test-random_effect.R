@@ -6,7 +6,7 @@ brute_re_mark_ll <- function(ev, p, spec) {
   edges <- edges_by_event(ev)
   t <- ev$times$t
   h <- function(n) if (spec$coffender_scale == "log1p") log1p(n) else n
-  deg <- numeric(0); last <- numeric(0); ties <- list()
+  deg <- numeric(0); last <- numeric(0); ties <- list(); past <- list()
   Q <- numeric(0); qj <- list()
 
   ll <- 0
@@ -24,6 +24,14 @@ brute_re_mark_ll <- function(ev, p, spec) {
       w <- exp(-p$beta_edges * (t[k] - last[old]))
       if (spec$degree) w <- w * (deg[old] + p$delta)
       if (spec$coffenders) w <- w * exp(p$theta * h(x))
+      if (isTRUE(spec$paths)) {
+        # 3-paths k - v - j - u: sum of (n_j - 1) over v's events j in the window
+        y <- vapply(old, function(v) {
+          pj <- past[[v]]
+          if (is.null(pj)) 0 else sum(pj$n1[t[k] - pj$t <= spec$coffender_window])
+        }, numeric(1))
+        w <- w * exp(p$theta_paths * h(y))
+      }
       q <- p$m * w / sum(w)
       joined <- old %in% perps
       Q[old] <- Q[old] + q
@@ -35,6 +43,7 @@ brute_re_mark_ll <- function(ev, p, spec) {
     deg[perps] <- deg[perps] + 1
     last[perps] <- t[k]
     for (v in perps) {
+      past[[v]] <- rbind(past[[v]], data.frame(t = t[k], n1 = length(perps) - 1))
       tv <- ties[[v]] %||% numeric(0)
       tv[setdiff(perps, v)] <- t[k]
       ties[[v]] <- tv
@@ -72,9 +81,11 @@ test_that("random effect loglik matches a brute-force calculation", {
   expect_gt(sum(event_summary(ev)$n_old), 5)
 
   for (spec in list(re_spec, attachment_spec(degree = FALSE, random_effect = TRUE),
+                    attachment_spec(degree = TRUE, coffenders = TRUE, paths = TRUE,
+                                    coffender_window = 3, random_effect = TRUE),
                     attachment_spec(degree = TRUE, coffenders = TRUE, coffender_scale = "linear",
                                     random_effect = TRUE))) {
-    q <- p_re[c("m", "beta_edges", attachment_param_names(spec))]
+    q <- c(p_re, theta_paths = -0.4)[c("m", "beta_edges", attachment_param_names(spec))]
     for (fv in c(0.6, 2.5)) {
       q$random_effect_var <- fv
       expect_equal(compile_logpmf_attach(ev, spec)(q), brute_re_mark_ll(ev, q, spec),

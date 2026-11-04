@@ -4,10 +4,23 @@
 #'
 #' Replaces the BA-bip rule for which old perps join an event. At event
 #' \eqn{k} each earlier perp \eqn{v} has weight
-#' \deqn{w_v = (d_v + \delta)\, e^{\theta x_v}\, e^{-\beta_e (t_k - \ell_v)}}
+#' \deqn{w_v = (d_v + \delta)\, e^{\theta x_v + \theta_p y_v}\,
+#'   e^{-\beta_e (t_k - \ell_v)}}
 #' where \eqn{d_v} is the number of events \eqn{v} has attended, \eqn{\ell_v}
-#' the time of the latest, and \eqn{x_v} its co-offender feature, \eqn{h} of
-#' the number of distinct perps it has shared an event with. It joins
+#' the time of the latest, and \eqn{x_v} and \eqn{y_v} are change statistics
+#' for adding the edge (event \eqn{k}, \eqn{v}), from \eqn{v}'s own history:
+#' \itemize{
+#'   \item \eqn{x_v = h(\cdot)} of the number of distinct perps \eqn{v} has
+#'     shared an event with (`coffenders`);
+#'   \item \eqn{y_v = h(\cdot)} of the number of bipartite 3-paths
+#'     \eqn{k - v - j - u} the edge completes, one for each earlier event
+#'     \eqn{j} of \eqn{v} and other perp \eqn{u} at it: co-offenders counted
+#'     with multiplicity, \eqn{\sum_j (n_j - 1)} (`paths`).
+#' }
+#' Both count only events at most `coffender_window` before \eqn{t_k}.
+#' Configurations that involve other perps at event \eqn{k} itself (event
+#' stars, 4-cycles) are not included, so joins stay independent given the
+#' past. It joins
 #' independently with probability
 #' \deqn{p_v = 1 - \exp(-m\, w_v / W), \qquad W = \textstyle\sum_u w_u,}
 #' so `m` is close to the expected number of returning perps per event when
@@ -36,12 +49,11 @@
 #' linear in events and joins. `random_effect_var = 0` gives the model
 #' without the random effect exactly.
 #'
-#' Parameters: `m`, `beta_edges` (\eqn{\beta_e}), `delta` (if `degree`) and
-#' `theta` (if `coffenders`), then `lambda_new`, `lambda_new0` (if
+#' Parameters: `m`, `beta_edges` (\eqn{\beta_e}), `delta` (if `degree`),
+#' `theta` (if `coffenders`) and `theta_paths` (\eqn{\theta_p}, if `paths`), then `lambda_new`, `lambda_new0` (if
 #' `min_perps = 1`), `size_new` (if `"negbin"`) and `random_effect_var` (if
-#' `random_effect`); see [attachment_param_names()]. With `degree = FALSE` and
-#' `coffenders = FALSE`
-#' the weights depend on recency only.
+#' `random_effect`); see [attachment_param_names()]. With `degree`,
+#' `coffenders` and `paths` all `FALSE` the weights depend on recency only.
 #'
 #' Since \eqn{\sum_v m w_v / W = m}, each evaluation needs only the running
 #' sum \eqn{W}, so its cost grows with the number of events and perp
@@ -50,11 +62,14 @@
 #' @param degree Logical; include \eqn{(d_v + \delta)}. Old perps have
 #'   \eqn{d_v \ge 1}, so `delta = 0` (joins proportional to past attendance)
 #'   is allowed; fix it there with `fixed_params` if the fit runs to 0.
-#' @param coffenders Logical; include \eqn{e^{\theta x_v}}.
+#' @param coffenders Logical; include \eqn{e^{\theta x_v}} (distinct
+#'   co-offenders).
 #' @param coffender_scale `"log1p"` (default) for \eqn{h(n) = \log(1 + n)} or
-#'   `"linear"` for \eqn{h(n) = n}.
-#' @param coffender_window Only co-offenders sharing an event at most this long
-#'   before count. `Inf` (the default) counts all.
+#'   `"linear"` for \eqn{h(n) = n}, for both `coffenders` and `paths`.
+#' @param coffender_window Only events at most this long before count towards
+#'   `coffenders` and `paths`. `Inf` (the default) counts all.
+#' @param paths Logical; include \eqn{e^{\theta_p y_v}} (3-paths, i.e.
+#'   co-offenders with multiplicity).
 #' @param new_perps Distribution of the new-perp count: `"poisson"` (default)
 #'   or `"negbin"`.
 #' @param min_perps `0` (default) allows events with no perps; `1` requires at
@@ -68,7 +83,7 @@
 #' @export
 attachment_spec <- function(degree = TRUE, coffenders = FALSE,
                             coffender_scale = c("log1p", "linear"),
-                            coffender_window = Inf,
+                            coffender_window = Inf, paths = FALSE,
                             new_perps = c("poisson", "negbin"), min_perps = 0,
                             random_effect = FALSE, random_effect_nodes = 8L) {
   coffender_scale <- match.arg(coffender_scale)
@@ -80,7 +95,7 @@ attachment_spec <- function(degree = TRUE, coffenders = FALSE,
   structure(
     list(degree = isTRUE(degree), coffenders = isTRUE(coffenders),
          coffender_scale = coffender_scale, coffender_window = coffender_window,
-         new_perps = new_perps, min_perps = as.integer(min_perps),
+         paths = isTRUE(paths), new_perps = new_perps, min_perps = as.integer(min_perps),
          random_effect = isTRUE(random_effect), random_effect_nodes = as.integer(random_effect_nodes)),
     class = "attachment_spec"
   )
@@ -93,7 +108,7 @@ attachment_spec <- function(degree = TRUE, coffenders = FALSE,
 #' @export
 attachment_param_names <- function(spec) {
   if (is.null(spec)) return(character(0))
-  c("m", "beta_edges", if (spec$degree) "delta", if (spec$coffenders) "theta", "lambda_new",
+  c("m", "beta_edges", if (spec$degree) "delta", .attach_theta_names(spec), "lambda_new",
     if (spec$min_perps == 1L) "lambda_new0", if (spec$new_perps == "negbin") "size_new",
     if (isTRUE(spec$random_effect)) "random_effect_var")
 }
@@ -133,6 +148,21 @@ attachment_param_names <- function(spec) {
   if (spec$coffender_scale == "log1p") log1p(n) else as.numeric(n)
 }
 
+# Internal: names of the change-statistic coefficients, in column order.
+.attach_theta_names <- function(spec) {
+  c(if (spec$coffenders) "theta", if (isTRUE(spec$paths)) "theta_paths")
+}
+
+# Internal: the change statistics for each state snapshot, one column per
+# coefficient in .attach_theta_names().
+.attach_features <- function(spec, h) {
+  cols <- list(theta = h$upd_x, theta_paths = h$upd_y)[.attach_theta_names(spec)]
+  X <- matrix(vapply(cols, function(n) .coffender_feature(spec, n), numeric(length(h$upd_x))),
+              nrow = length(h$upd_x))
+  colnames(X) <- names(cols)
+  X
+}
+
 # Attachment mark evaluator for a bipartite history.
 compile_logpmf_attach <- function(events, spec) {
   stopifnot(inherits(spec, "attachment_spec"))
@@ -142,7 +172,8 @@ compile_logpmf_attach <- function(events, spec) {
   invalid <- !all(f$valid)
   h <- if (invalid) NULL else attach_history_cpp(a$t, a$node_ptr, a$edge_ptr, a$edge_i, a$edge_j,
                                                  f$focal, length(a$ids), spec$coffender_window)
-  feat <- if (spec$coffenders && !invalid) .coffender_feature(spec, h$upd_x) else numeric(length(h$upd_x))
+  th_names <- .attach_theta_names(spec)
+  feat <- if (invalid) NULL else .attach_features(spec, h)
   n_old <- if (invalid) integer(0) else diff(h$obs_ptr)
   gl <- .gauss_legendre(spec$random_effect_nodes %||% 8L)
 
@@ -152,7 +183,7 @@ compile_logpmf_attach <- function(events, spec) {
     m <- get("m", NA_real_)
     beta_edges <- get("beta_edges", NA_real_)
     delta <- if (spec$degree) get("delta", NA_real_) else 0
-    theta <- if (spec$coffenders) get("theta", NA_real_) else 0
+    theta <- vapply(th_names, get, numeric(1), default = NA_real_)
     lambda_new <- get("lambda_new", NA_real_)
     lambda_new0 <- if (spec$min_perps == 1L) get("lambda_new0", NA_real_) else 1
     size_new <- if (spec$new_perps == "negbin") get("size_new", NA_real_) else 1
@@ -160,7 +191,7 @@ compile_logpmf_attach <- function(events, spec) {
 
     ok <- function(x) is.numeric(x) && length(x) == 1L && is.finite(x)
     if (!ok(m) || m <= 0 || !ok(beta_edges) || beta_edges < 0 || !ok(lambda_new) || lambda_new < 0 ||
-        !ok(delta) || delta < 0 || !ok(theta) ||
+        !ok(delta) || delta < 0 || !all(is.finite(theta)) ||
         !ok(lambda_new0) || lambda_new0 < 0 || !ok(size_new) || size_new <= 0 ||
         !ok(random_effect_var) || random_effect_var < 0) return(-Inf)
     if (invalid) return(-Inf)
@@ -171,8 +202,9 @@ compile_logpmf_attach <- function(events, spec) {
     counts <- .new_perp_count_ll(spec, f$n_new, n_old, params, gradient = gradient)
     ll <- as.numeric(counts) + r[1L]
     if (gradient && is.finite(ll)) {
-      g <- c(m = r[2L], beta_edges = r[3L], delta = r[4L], theta = r[5L],
-             attr(counts, "gradient"), random_effect_var = r[6L])
+      P <- length(th_names)
+      g <- c(m = r[2L], beta_edges = r[3L], delta = r[4L], stats::setNames(r[4L + seq_len(P)], th_names),
+             attr(counts, "gradient"), random_effect_var = r[5L + P])
       attr(ll, "gradient") <- g[intersect(names(g), attachment_param_names(spec))]
     }
     ll
@@ -200,7 +232,7 @@ compile_logpmf_attach <- function(events, spec) {
         fv <- params[["random_effect_var"]]
         random_effect_shape <- if (fv > 0) 1 / fv else Inf
       }
-      sim <<- attach_sim_new(params, spec$degree, spec$coffenders,
+      sim <<- attach_sim_new(params, spec$degree, spec$coffenders, isTRUE(spec$paths),
                              spec$coffender_scale == "log1p", spec$coffender_window,
                              spec$new_perps == "negbin", spec$min_perps == 1L,
                              random_effect_shape, t_k)

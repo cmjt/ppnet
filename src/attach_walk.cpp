@@ -2,9 +2,9 @@
 //
 // Attachment of old perps to events in a bipartite event-perp history. At
 // event k each old perp v has weight
-//   w_v = c_v * exp(-beta * (t_k - last_v)),   c_v = (d_v + delta) * exp(theta * x_v)
-// (d_v: events attended, last_v: time of the latest one, x_v: co-offender
-// feature) and joins independently with p_v = 1 - exp(-q_v), q_v = m w_v / W,
+//   w_v = c_v * exp(-beta * (t_k - last_v)),   c_v = (d_v + delta) * exp(theta' s_v)
+// (d_v: events attended, last_v: time of the latest one, s_v: change
+// statistics from v's own history, e.g. co-offender ties or 3-paths) and joins independently with p_v = 1 - exp(-q_v), q_v = m w_v / W,
 // W = sum of w over all old perps. Because sum_v q_v = m, the event's log-
 // likelihood is
 //   sum_{v joined} log(expm1(q_v)) - m,
@@ -24,19 +24,22 @@
 using namespace Rcpp;
 
 // Parameter-free pass: the state changes of every perp, and which old perps
-// joined each event. State snapshots (node, d, last, x) at index k are
-// applied, in order, before event k is scored; x counts distinct co-offenders
-// sharing an event no more than `window` before.
+// joined each event. State snapshots (node, d, last, x, y) at index k are
+// applied, in order, before event k is scored. Over v's events no more than
+// `window` before, x counts distinct co-offenders and y counts 3-paths
+// k - v - j - u completed by v joining event k, i.e. the 2-paths v - j - u:
+// co-offenders with multiplicity, sum over v's events j of (n_j - 1).
 // [[Rcpp::export]]
 List attach_history_cpp(NumericVector t, IntegerVector node_ptr,
                         IntegerVector edge_ptr, IntegerVector edge_i,
                         IntegerVector edge_j, IntegerVector focal,
                         int n_nodes, double window) {
   const int n_ev = t.size();
-  std::vector<int> born(n_nodes, -1), deg(n_nodes, 0), x(n_nodes, 0), stamp(n_nodes, -1);
+  std::vector<int> born(n_nodes, -1), deg(n_nodes, 0), x(n_nodes, 0), y(n_nodes, 0),
+    stamp(n_nodes, -1);
   std::vector<double> last(n_nodes, 0.0);
 
-  std::vector<int> upd_idx, upd_node, upd_deg, upd_x, obs_idx, obs_node;
+  std::vector<int> upd_idx, upd_node, upd_deg, upd_x, upd_y, obs_idx, obs_node;
   std::vector<double> upd_last;
 
   // Active co-offender ties, keyed by node pair, holding their expiry time.
@@ -44,6 +47,9 @@ List attach_history_cpp(NumericVector t, IntegerVector node_ptr,
   typedef std::pair<double, long long> Expiry;
   std::priority_queue<Expiry, std::vector<Expiry>, std::greater<Expiry> > expiries;
   const bool finite_window = std::isfinite(window);
+  // Events still inside the window, for expiring their 3-paths.
+  std::vector<std::vector<int> > ev_perps(finite_window ? n_ev : 0);
+  std::queue<int> ev_queue;
 
   int stamp_id = 0;
   std::vector<int> changed;
@@ -61,6 +67,7 @@ List attach_history_cpp(NumericVector t, IntegerVector node_ptr,
       upd_deg.push_back(deg[v]);
       upd_last.push_back(last[v]);
       upd_x.push_back(x[v]);
+      upd_y.push_back(y[v]);
     }
     changed.clear();
     ++stamp_id;
@@ -82,6 +89,16 @@ List attach_history_cpp(NumericVector t, IntegerVector node_ptr,
       touch(hi);
       tie.erase(it);
     }
+    // Events more than `window` before t_k no longer give 3-paths.
+    while (!ev_queue.empty() && t[ev_queue.front()] + window < t[k]) {
+      const std::vector<int>& pj = ev_perps[ev_queue.front()];
+      for (size_t a = 0; a < pj.size(); ++a) {
+        y[pj[a]] -= (int)pj.size() - 1;
+        touch(pj[a]);
+      }
+      ev_perps[ev_queue.front()].clear();
+      ev_queue.pop();
+    }
     record(k);
 
     std::vector<int> perps;
@@ -100,6 +117,7 @@ List attach_history_cpp(NumericVector t, IntegerVector node_ptr,
     for (size_t a = 0; a < perps.size(); ++a) {
       const int v = perps[a];
       ++deg[v];
+      y[v] += (int)perps.size() - 1;
       last[v] = t[k];
       touch(v);
       for (size_t b = a + 1; b < perps.size(); ++b) {
@@ -115,6 +133,10 @@ List attach_history_cpp(NumericVector t, IntegerVector node_ptr,
         if (finite_window) expiries.push(Expiry(expiry, key));
       }
     }
+    if (finite_window && perps.size() > 1) {
+      ev_perps[k] = perps;
+      ev_queue.push(k);
+    }
     if (k + 1 < n_ev) record(k + 1);
     else changed.clear();
   }
@@ -129,48 +151,55 @@ List attach_history_cpp(NumericVector t, IntegerVector node_ptr,
   return List::create(
     _["upd_ptr"] = ptr(upd_idx), _["upd_node"] = wrap(upd_node),
     _["upd_deg"] = wrap(upd_deg), _["upd_last"] = wrap(upd_last),
-    _["upd_x"] = wrap(upd_x),
+    _["upd_x"] = wrap(upd_x), _["upd_y"] = wrap(upd_y),
     _["obs_ptr"] = ptr(obs_idx), _["obs_node"] = wrap(obs_node)
   );
 }
 
 // Attachment log-likelihood and its gradient with respect to
-// (m, beta_edges, delta, theta, random_effect_var). upd_feat is the co-offender
-// feature for each snapshot (already transformed); use_degree drops the
+// (m, beta_edges, delta, theta_1..theta_P, random_effect_var). upd_feat holds
+// the P change statistics for each snapshot (one column each, already
+// transformed); use_degree drops the
 // (d + delta) factor. gl_x and gl_w are a Gauss-Legendre rule on [-1, 1],
 // used panel by panel for the random-effect integrals.
 // [[Rcpp::export]]
 NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
                             IntegerVector upd_node, IntegerVector upd_deg,
-                            NumericVector upd_last, NumericVector upd_feat,
+                            NumericVector upd_last, NumericMatrix upd_feat,
                             IntegerVector obs_ptr, IntegerVector obs_node,
                             int n_nodes, double m, double beta, double delta,
-                            double theta, bool use_degree, double random_effect_var,
+                            NumericVector theta, bool use_degree, double random_effect_var,
                             NumericVector gl_x, NumericVector gl_w) {
   const int n_ev = t.size();
-  const NumericVector fail =
-    NumericVector::create(R_NegInf, NA_REAL, NA_REAL, NA_REAL, NA_REAL, NA_REAL);
+  const int P = theta.size();
+  if (upd_feat.ncol() != P) stop("upd_feat needs one column per theta.");
+  NumericVector fail(5 + P, NA_REAL);
+  fail[0] = R_NegInf;
   // Below 1e-8 the random-effect term is numerically the model without it.
   const bool has_re = random_effect_var > 1e-8;
 
   std::vector<char> active(n_nodes, 0);
-  std::vector<double> c(n_nodes, 0.0), last(n_nodes, 0.0), feat(n_nodes, 0.0), dd(n_nodes, 0.0);
+  // feat[P * v + j]: perp v's statistic j.
+  std::vector<double> c(n_nodes, 0.0), last(n_nodes, 0.0), feat((size_t)P * n_nodes, 0.0),
+    dd(n_nodes, 0.0);
   std::vector<int> active_nodes;
 
   // W and the sums its derivatives need, all at time tc:
-  //   W  = sum c E,  Wd = sum c / (d + delta) E,  Wt = sum c x E,  A = sum c a E
+  //   W  = sum c E,  Wd = sum c / (d + delta) E,  Wt_j = sum c s_j E,  A = sum c a E
   // with E = exp(-beta a) and a = tc - last.
-  double W = 0.0, Wd = 0.0, Wt = 0.0, A = 0.0, tc = t.size() > 0 ? t[0] : 0.0;
+  double W = 0.0, Wd = 0.0, A = 0.0, tc = t.size() > 0 ? t[0] : 0.0;
+  std::vector<double> Wt(P, 0.0);
   auto contrib = [&](int v, double sign) {
     const double a = tc - last[v];
     const double cE = c[v] * std::exp(-beta * a);
     W += sign * cE;
     Wd += sign * (use_degree ? cE / dd[v] : 0.0);
-    Wt += sign * cE * feat[v];
+    for (int j = 0; j < P; ++j) Wt[j] += sign * cE * feat[(size_t)P * v + j];
     A += sign * cE * a;
   };
   auto recompute = [&]() {
-    W = Wd = Wt = A = 0.0;
+    W = Wd = A = 0.0;
+    std::fill(Wt.begin(), Wt.end(), 0.0);
     for (size_t a = 0; a < active_nodes.size(); ++a) contrib(active_nodes[a], 1.0);
   };
 
@@ -181,10 +210,13 @@ NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
   // taken from suffix sums of r once the walk is done. r_k tends to fall
   // over an epoch, so suffix sums keep late stretches accurate where prefix
   // sums would lose them to cancellation.
-  enum { R0, RD, RT, RB, RA, NR };
+  // Suffix-sum columns: R0, RD, RB, RA, then one per statistic.
+  enum { R0, RD, RB, RA, RT };
+  const int NR = RT + P;
   std::vector<double> suf, ep_tref;
   std::vector<int> ep_of, ep_begin;
-  // Random effect: each join's perp, q and d log q / d (beta, delta, theta).
+  // Random effect: each join's perp, q and d log q / d (beta, delta, theta);
+  // ob_dt holds P values per join.
   std::vector<int> ob_v;
   std::vector<double> ob_q, ob_db, ob_dd, ob_dt;
   std::vector<int> seg_v, seg_s, seg_e, seg_start;
@@ -201,11 +233,12 @@ NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
     seg_e.push_back(e);
     seg_c.push_back(c[v]);
     seg_last.push_back(last[v]);
-    seg_feat.push_back(feat[v]);
+    for (int j = 0; j < P; ++j) seg_feat.push_back(feat[(size_t)P * v + j]);
     seg_dd.push_back(dd[v]);
   };
 
-  double ll = 0.0, g_m = 0.0, g_beta = 0.0, g_delta = 0.0, g_theta = 0.0, g_fv = 0.0;
+  double ll = 0.0, g_m = 0.0, g_beta = 0.0, g_delta = 0.0, g_fv = 0.0;
+  std::vector<double> g_theta(P, 0.0);
   for (int k = 0; k < n_ev; ++k) {
     // Decay to t_k; A follows the same recursion as the Hawkes R term.
     const double dt = t[k] - tc;
@@ -213,7 +246,7 @@ NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
     A = e * (A + dt * W);
     W *= e;
     Wd *= e;
-    Wt *= e;
+    for (int j = 0; j < P; ++j) Wt[j] *= e;
     tc = t[k];
 
     for (int u = upd_ptr[k]; u < upd_ptr[k + 1]; ++u) {
@@ -228,8 +261,12 @@ NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
       }
       dd[v] = upd_deg[u] + delta;
       last[v] = upd_last[u];
-      feat[v] = upd_feat[u];
-      c[v] = (use_degree ? dd[v] : 1.0) * std::exp(theta * feat[v]);
+      double eta = 0.0;
+      for (int j = 0; j < P; ++j) {
+        feat[(size_t)P * v + j] = upd_feat(u, j);
+        eta += theta[j] * upd_feat(u, j);
+      }
+      c[v] = (use_degree ? dd[v] : 1.0) * std::exp(eta);
       contrib(v, 1.0);
     }
     // Bound the drift of the running sums from repeated add/remove.
@@ -241,7 +278,9 @@ NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
     }
     if (!std::isfinite(W) || W <= 0.0) return fail;
 
-    const double Gd = Wd / W, Gt = Wt / W, Gb = -A / W;
+    const double Gd = Wd / W, Gb = -A / W;
+    std::vector<double> Gt(P);
+    for (int j = 0; j < P; ++j) Gt[j] = Wt[j] / W;
     if (has_re) {
       // The -sum_v q_vk = -m term moves into each perp's marginal below.
       if (ep_tref.empty() || beta * (tc - ep_tref.back()) > 300.0) {
@@ -251,8 +290,12 @@ NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
       const int E = (int)ep_tref.size() - 1;
       ep_of[k] = E;
       const double r = std::exp(-beta * (tc - ep_tref[E]) - std::log(W));
-      const double add[NR] = {r, r * Gd, r * Gt, r * Gb, r * (tc - ep_tref[E])};
-      for (int j = 0; j < NR; ++j) suf[(size_t)NR * k + j] = add[j];
+      double* sk = &suf[(size_t)NR * k];
+      sk[R0] = r;
+      sk[RD] = r * Gd;
+      sk[RB] = r * Gb;
+      sk[RA] = r * (tc - ep_tref[E]);
+      for (int j = 0; j < P; ++j) sk[RT + j] = r * Gt[j];
     } else {
       ll -= m;
       g_m -= 1.0;
@@ -267,7 +310,7 @@ NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
         ob_q.push_back(q);
         ob_db.push_back(-a - Gb);
         ob_dd.push_back(use_degree ? 1.0 / dd[v] - Gd : 0.0);
-        ob_dt.push_back(feat[v] - Gt);
+        for (int j = 0; j < P; ++j) ob_dt.push_back(feat[(size_t)P * v + j] - Gt[j]);
         continue;
       }
       ll += std::log(std::expm1(q));
@@ -275,7 +318,7 @@ NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
       g_m += rq / m;
       g_beta += rq * (-a - Gb);
       if (use_degree) g_delta += rq * (1.0 / dd[v] - Gd);
-      g_theta += rq * (feat[v] - Gt);
+      for (int j = 0; j < P; ++j) g_theta[j] += rq * (feat[(size_t)P * v + j] - Gt[j]);
     }
   }
 
@@ -294,7 +337,8 @@ NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
     }
 
     std::vector<double> Qv(n_nodes, 0.0), dQ_beta(n_nodes, 0.0), dQ_delta(n_nodes, 0.0),
-      dQ_theta(n_nodes, 0.0);
+      dQ_theta((size_t)P * n_nodes, 0.0);
+    std::vector<double> S(NR);
     for (size_t i = 0; i < seg_v.size(); ++i) {
       const int v = seg_v[i], s = seg_s[i], e = seg_e[i];
       for (int E = ep_of[s]; E <= ep_of[e - 1]; ++E) {
@@ -302,13 +346,14 @@ NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
         const double F = m * seg_c[i] * std::exp(-beta * gap);
         if (F == 0.0) break;  // later epochs are smaller still
         const int lo = std::max(s, ep_begin[E]), hi = std::min(e, ep_end(E));
-        double S[NR];
         for (int j = 0; j < NR; ++j) {
           S[j] = suf[(size_t)NR * lo + j] - (hi < ep_end(E) ? suf[(size_t)NR * hi + j] : 0.0);
         }
         const double Q = F * S[R0];
         Qv[v] += Q;
-        dQ_theta[v] += seg_feat[i] * Q - F * S[RT];
+        for (int j = 0; j < P; ++j) {
+          dQ_theta[(size_t)P * v + j] += seg_feat[(size_t)P * i + j] * Q - F * S[RT + j];
+        }
         if (use_degree) dQ_delta[v] += Q / seg_dd[i] - F * S[RD];
         dQ_beta[v] += -F * S[RA] - gap * Q - F * S[RB];
       }
@@ -446,7 +491,8 @@ NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
 
       // d/dpsi of the log integrand: sum_joins phi(u q) dlog q - u dQ', with
       // dQ' = dQ_v - sum_joins q dlog q.
-      double jq_b = 0.0, jq_d = 0.0, jq_t = 0.0;
+      double jq_b = 0.0, jq_d = 0.0;
+      std::vector<double> jq_t(P, 0.0);
       for (int o = o0; o < o1; ++o) {
         const int oo = ob_ord[o];
         double Ephi = 0.0;
@@ -454,18 +500,27 @@ NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
         g_m += Ephi / m;
         g_beta += Ephi * ob_db[oo];
         g_delta += Ephi * ob_dd[oo];
-        g_theta += Ephi * ob_dt[oo];
         jq_b += ob_q[oo] * ob_db[oo];
         jq_d += ob_q[oo] * ob_dd[oo];
-        jq_t += ob_q[oo] * ob_dt[oo];
+        for (int j = 0; j < P; ++j) {
+          g_theta[j] += Ephi * ob_dt[(size_t)P * oo + j];
+          jq_t[j] += ob_q[oo] * ob_dt[(size_t)P * oo + j];
+        }
       }
       g_m -= Eu * Qp / m;
       g_beta -= Eu * (dQ_beta[v] - jq_b);
       g_delta -= Eu * (dQ_delta[v] - jq_d);
-      g_theta -= Eu * (dQ_theta[v] - jq_t);
+      for (int j = 0; j < P; ++j) g_theta[j] -= Eu * (dQ_theta[(size_t)P * v + j] - jq_t[j]);
       g_fv -= a * a * d_a;
     }
     if (!std::isfinite(ll)) return fail;
   }
-  return NumericVector::create(ll, g_m, g_beta, g_delta, g_theta, g_fv);
+  NumericVector out(5 + P);
+  out[0] = ll;
+  out[1] = g_m;
+  out[2] = g_beta;
+  out[3] = g_delta;
+  for (int j = 0; j < P; ++j) out[4 + j] = g_theta[j];
+  out[4 + P] = g_fv;
+  return out;
 }

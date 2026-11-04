@@ -84,6 +84,20 @@ test_that("attachment gradient matches central differences", {
              p[c("mu", "K", "beta", "m", "beta_edges", "lambda_new")])
 })
 
+test_that("attachment gradient with 3-paths matches central differences", {
+  set.seed(60)
+  sp <- attachment_spec(degree = TRUE, coffenders = TRUE, paths = TRUE, coffender_window = 3)
+  p <- list(mu = 1, K = 0.5, beta = 1, m = 0.8, beta_edges = 0.4, delta = 0.5,
+            theta = 0.7, theta_paths = -0.3, lambda_new = 0.9)
+  ev <- sim_hawkesNet(p, T_end = 20, mark_type = "ba_bip", attachment = sp)$ev
+  check_grad(.build_loglik_fn(ev, T_end = 20, mark_type = "ba_bip", attachment = sp),
+             modifyList(p, list(theta = -0.2, theta_paths = 0.4)))
+  sp_re <- attachment_spec(degree = TRUE, coffenders = TRUE, paths = TRUE, coffender_window = 3,
+                           random_effect = TRUE)
+  check_grad(.build_loglik_fn(ev, T_end = 20, mark_type = "ba_bip", attachment = sp_re),
+             c(p, random_effect_var = 0.7))
+})
+
 test_that("the time likelihood stays bounded as beta goes to 0", {
   # With 1 - exp(-beta * tau) computed naively, a tiny beta drops the
   # compensator's K term and a huge K then looks ever better.

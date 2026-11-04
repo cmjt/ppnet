@@ -24,7 +24,7 @@
 #'   default to the `"none"` transform.
 #' @param excitation Optional [excitation_spec()]; its coefficients (`alpha`,
 #'   `gamma`) must be in `params_init` and default to the `"none"` transform.
-#' @param attachment Optional [attachment_spec()]; `theta` defaults to the
+#' @param attachment Optional [attachment_spec()]; `theta` and `theta_paths` default to the
 #'   `"none"` transform, the other attachment parameters to `"log"`.
 #' @param kernel `"exp"` or `"exp2"`; see [loglik()]. With `"exp2"`,
 #'   `params_init` must contain `K_fast` and `beta_fast`, with `beta_fast > beta`.
@@ -120,7 +120,7 @@ fit_hawkesNet <- function(events,
   # Baseline and excitation coefficients can be negative, so they are fitted
   # untransformed unless the user says otherwise.
   b_names <- intersect(c(baseline_coef_names(baseline), excitation_coef_names(excitation),
-                         if (!is.null(attachment) && attachment$coffenders) "theta"),
+                         if (!is.null(attachment)) .attach_theta_names(attachment)),
                        names(params_init))
   if (is.null(transform)) {
     transform <- rep("log", length(params_init))
