@@ -85,10 +85,27 @@ configurations, when added, by pseudo-likelihood.
 - [ ] **Fit to the real data**: `paths` alone, with `coffenders` (distinct
   ties vs repeat co-offending with the same partners), and with the random
   effect.
-- [ ] **Within-event configurations** (4-cycles: past co-offenders at the
-  same event; event stars) by pseudo-likelihood: each (k, v) scored given the
-  other perps at event k. Not an exact likelihood, so no LR/AIC comparisons
-  with the exact models.
+- [x] **4-cycles by pseudo-likelihood** (`attachment_spec(cycles = TRUE)`,
+  `theta_cycles`). `z_vk` = 4-cycles k - v - j - u - k closed by v joining k
+  (shared past events, within `coffender_window`, with the other old perps at
+  k). Each old perp is scored by its conditional given the rest of the event,
+  `logit P = log(expm1(q_v)) + theta_cycles h(z_vk)`: the full conditionals
+  of a per-event autologistic model, nesting the current model at 0. Only
+  perps with z > 0 change from the independent terms, so the cost stays
+  linear. Sandwich SEs from per-event scores (`attachment_vcov()`); Hessian
+  SEs, LR tests and AIC are not valid for these fits. The simulator draws
+  joins by Gibbs sampling (10 sweeps from the independent draw); tests check
+  its joins against the conditionals.
+  Like ERGMs with closure terms the model degenerates for large positive
+  `theta_cycles` (past co-offenders pull each other in, groups grow, more
+  shared events): with m = 1.5 it runs away by `theta_cycles` = 0.9, so
+  simulations from a fitted value need checking.
+- [ ] **4-cycles with the random effect.** Disallowed for now: the per-perp
+  integral would be over a product of conditionals (a composite marginal
+  likelihood). A fixed propensity does not by itself make co-offenders turn
+  up together (joins are independent given propensities), so this matters
+  less than for `theta`.
+- [ ] **Event stars** (perps already at event k) by the same route, if wanted.
 - [ ] **Perp covariates** as nodal change statistics, if wanted.
 - [ ] **Check the old `cs_bip` kernel**: does it score each candidate edge on
   the pre-event network (so within-event configurations never register)?

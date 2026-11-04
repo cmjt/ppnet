@@ -11,6 +11,14 @@
 // changes only when its own state does. w and u w are kept in Fenwick trees,
 // so each event costs O((m + changes) log n_perps). Random numbers come from
 // R, so set.seed() makes runs reproducible.
+//
+// With 4-cycles (theta_c) joins at an event are drawn from the autologistic
+// model whose full conditionals the likelihood uses,
+//   logit P(v joins | rest) = log(expm1(u_v q_v)) + theta_c h(z_v),
+// with z_v the shared events (within the window) of v with the other old
+// joiners: by Gibbs sampling, starting from the independent draw and
+// sweeping over every old perp `n_sweeps` times. That costs O(n_sweeps *
+// n_perps) per event.
 
 #include <Rcpp.h>
 #include <cmath>
@@ -67,7 +75,11 @@ struct AttachSim {
   // parameters
   double m, beta_e, delta, theta, theta_p, window, lambda_new, lambda_new0, size_new,
     random_effect_shape;
-  bool use_degree, use_cof, use_paths, log1p_scale, negbin, min_one;
+  double theta_c;
+  bool use_degree, use_cof, use_paths, use_cyc, log1p_scale, negbin, min_one;
+  int n_sweeps;
+  // 4-cycles: per perp, partners and the times of their shared events
+  std::vector<std::unordered_map<int, std::vector<double> > > shared;
   // perp state: x distinct co-offenders, y 3-paths (co-offenders with
   // multiplicity), both over events within the window
   std::vector<double> u, last;
@@ -105,9 +117,9 @@ struct AttachSim {
 }  // namespace
 
 // [[Rcpp::export]]
-SEXP attach_sim_new(List params, bool use_degree, bool use_cof, bool use_paths, bool log1p_scale,
-                    double window, bool negbin, bool min_one, double random_effect_shape,
-                    double t0) {
+SEXP attach_sim_new(List params, bool use_degree, bool use_cof, bool use_paths, bool use_cyc,
+                    bool log1p_scale, double window, bool negbin, bool min_one,
+                    double random_effect_shape, double t0, int n_sweeps = 10) {
   AttachSim* sim = new AttachSim();
   auto get = [&](const char* nm, double dflt) {
     return params.containsElementNamed(nm) ? as<double>(params[nm]) : dflt;
@@ -117,6 +129,9 @@ SEXP attach_sim_new(List params, bool use_degree, bool use_cof, bool use_paths, 
   sim->delta = get("delta", 0.0);
   sim->theta = get("theta", 0.0);
   sim->theta_p = get("theta_paths", 0.0);
+  sim->theta_c = get("theta_cycles", 0.0);
+  sim->use_cyc = use_cyc;
+  sim->n_sweeps = n_sweeps;
   sim->lambda_new = get("lambda_new", NA_REAL);
   sim->lambda_new0 = get("lambda_new0", 0.0);
   sim->size_new = get("size_new", 1.0);
@@ -200,6 +215,46 @@ List attach_sim_step(SEXP ptr, double t) {
     }
   }
 
+  // 4-cycles: Gibbs sweeps over the old perps from the independent draw.
+  if (S.use_cyc && n_old > 0) {
+    const double W0 = S.s0.total(), cut = t - S.window;
+    std::vector<char> in(n_old, 0);
+    std::vector<double> z(n_old, 0.0);
+    // Shared events of u with each partner within the window (pruned).
+    auto toggle = [&](int u, double sign) {
+      for (auto it = S.shared[u].begin(); it != S.shared[u].end();) {
+        std::vector<double>& tt = it->second;
+        size_t drop = 0;
+        while (drop < tt.size() && tt[drop] < cut) ++drop;
+        if (drop > 0) tt.erase(tt.begin(), tt.begin() + drop);
+        if (tt.empty()) {
+          it = S.shared[u].erase(it);
+          continue;
+        }
+        if (it->first < n_old) z[it->first] += sign * (double)tt.size();
+        ++it;
+      }
+    };
+    for (size_t a = 0; a < joined.size(); ++a) {
+      in[joined[a]] = 1;
+      toggle(joined[a], 1.0);
+    }
+    auto h = [&](double n) { return S.log1p_scale ? std::log1p(n) : n; };
+    for (int sweep = 0; sweep < S.n_sweeps; ++sweep) {
+      for (int v = 0; v < n_old; ++v) {
+        const double q = S.u[v] * S.m * S.s0.value[v] / W0;
+        const double x = std::log(std::expm1(q)) + S.theta_c * h(z[v]);
+        const bool y = R::unif_rand() < 1.0 / (1.0 + std::exp(-x));
+        if (y != (bool)in[v]) {
+          in[v] = y;
+          toggle(v, y ? 1.0 : -1.0);
+        }
+      }
+    }
+    joined.clear();
+    for (int v = 0; v < n_old; ++v) if (in[v]) joined.push_back(v);
+  }
+
   // New perps, given how many old ones joined.
   const bool shifted = S.min_one && joined.empty();
   const int n_new = (int)shifted + (int)S.draw_count(shifted ? S.lambda_new0 : S.lambda_new);
@@ -211,6 +266,7 @@ List attach_sim_step(SEXP ptr, double t) {
     S.x.push_back(0);
     S.y.push_back(0);
     S.stamp.push_back(-1);
+    if (S.use_cyc) S.shared.emplace_back();
     S.s.push(0.0);
     S.s0.push(0.0);
   }
@@ -239,6 +295,14 @@ List attach_sim_step(SEXP ptr, double t) {
     }
   }
   if (std::isfinite(S.window) && perps.size() > 1) S.recent.push(std::make_pair(t, perps));
+  if (S.use_cyc) {
+    for (size_t a = 0; a < perps.size(); ++a) {
+      for (size_t b = a + 1; b < perps.size(); ++b) {
+        S.shared[perps[a]][perps[b]].push_back(t);
+        S.shared[perps[b]][perps[a]].push_back(t);
+      }
+    }
+  }
   for (size_t a = 0; a < changed.size(); ++a) S.update(changed[a]);
 
   return List::create(_["joined"] = wrap(joined), _["n_new"] = n_new);

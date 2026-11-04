@@ -10,6 +10,7 @@ attachment_spec(
   coffender_scale = c("log1p", "linear"),
   coffender_window = Inf,
   paths = FALSE,
+  cycles = FALSE,
   new_perps = c("poisson", "negbin"),
   min_perps = 0,
   random_effect = FALSE,
@@ -32,6 +33,9 @@ co-offenders).}
 
 \item{paths}{Logical; include \eqn{e^{\theta_p y_v}} (3-paths, i.e.
 co-offenders with multiplicity).}
+
+\item{cycles}{Logical; let joins depend on past co-offenders at the same
+event through 4-cycles (\code{theta_cycles}), fitted by pseudo-likelihood.}
 
 \item{new_perps}{Distribution of the new-perp count: \code{"poisson"} (default)
 or \code{"negbin"}.}
@@ -65,9 +69,8 @@ shared an event with (\code{coffenders});
 with multiplicity, \eqn{\sum_j (n_j - 1)} (\code{paths}).
 }
 Both count only events at most \code{coffender_window} before \eqn{t_k}.
-Configurations that involve other perps at event \eqn{k} itself (event
-stars, 4-cycles) are not included, so joins stay independent given the
-past. It joins
+These depend only on \eqn{v}'s own history, so joins stay independent
+given the past. It joins
 independently with probability
 \deqn{p_v = 1 - \exp(-m\, w_v / W), \qquad W = \textstyle\sum_u w_u,}
 so \code{m} is close to the expected number of returning perps per event when
@@ -102,6 +105,24 @@ Parameters: \code{m}, \code{beta_edges} (\eqn{\beta_e}), \code{delta} (if \code{
 \code{min_perps = 1}), \code{size_new} (if \code{"negbin"}) and \code{random_effect_var} (if
 \code{random_effect}); see \code{\link[=attachment_param_names]{attachment_param_names()}}. With \code{degree},
 \code{coffenders} and \code{paths} all \code{FALSE} the weights depend on recency only.
+
+With \code{cycles = TRUE} joins at the same event depend on each other through
+the 4-cycle change statistic \eqn{z_{vk} = h(\cdot)} of the number of
+4-cycles \eqn{k - v - j - u - k} that \eqn{v} joining closes: one for each
+other old perp \eqn{u} at event \eqn{k} and earlier event \eqn{j} (within
+\code{coffender_window}) that \eqn{u} and \eqn{v} both attended, i.e. past
+co-offenders turning up together. Each old perp is scored by its
+conditional given the others at the event,
+\deqn{\mathrm{logit}\, P(v \text{ joins} \mid \text{rest}) =
+  \log(e^{q_v} - 1) + \theta_c z_{vk}, \qquad q_v = m w_v / W,}
+the full conditionals of an autologistic model for each event, so the
+fit maximises a pseudo-likelihood. At \eqn{\theta_c = 0} (\code{theta_cycles})
+this is the model above exactly. A pseudo-likelihood is not a likelihood:
+standard errors from its Hessian are wrong (typically too small), so use
+\code{\link[=attachment_vcov]{attachment_vcov()}}, and likelihood-ratio tests and AIC do not apply to
+models with \code{cycles}. It cannot be combined with \code{random_effect}. Given
+each perp's propensity joins are independent, so a fixed propensity does
+not by itself make past co-offenders turn up together.
 
 Since \eqn{\sum_v m w_v / W = m}, each evaluation needs only the running
 sum \eqn{W}, so its cost grows with the number of events and perp

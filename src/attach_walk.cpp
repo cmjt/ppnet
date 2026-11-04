@@ -29,17 +29,29 @@ using namespace Rcpp;
 // `window` before, x counts distinct co-offenders and y counts 3-paths
 // k - v - j - u completed by v joining event k, i.e. the 2-paths v - j - u:
 // co-offenders with multiplicity, sum over v's events j of (n_j - 1).
+//
+// With cycles = true it also lists, for each event k, the old perps v whose
+// 4-cycle change statistic is positive: z_vk = number of 4-cycles
+// k - v - j - u - k closed by v joining k, one for each other old perp u at
+// k and event j within `window` that u and v both attended. These are the
+// past co-offenders of the old perps at k (cyc_node, cyc_z, and cyc_y = 1 if
+// v joined); every other old perp has z = 0.
 // [[Rcpp::export]]
 List attach_history_cpp(NumericVector t, IntegerVector node_ptr,
                         IntegerVector edge_ptr, IntegerVector edge_i,
                         IntegerVector edge_j, IntegerVector focal,
-                        int n_nodes, double window) {
+                        int n_nodes, double window, bool cycles = false) {
   const int n_ev = t.size();
   std::vector<int> born(n_nodes, -1), deg(n_nodes, 0), x(n_nodes, 0), y(n_nodes, 0),
     stamp(n_nodes, -1);
   std::vector<double> last(n_nodes, 0.0);
 
   std::vector<int> upd_idx, upd_node, upd_deg, upd_x, upd_y, obs_idx, obs_node;
+  // 4-cycles: per perp, its partners and the times of their shared events.
+  std::vector<std::unordered_map<int, std::vector<double> > > shared(cycles ? n_nodes : 0);
+  std::vector<int> cyc_idx, cyc_node, cyc_z, cyc_y, zc(cycles ? n_nodes : 0, 0),
+    joined_now(cycles ? n_nodes : 0, 0);
+  std::vector<int> zc_list;
   std::vector<double> upd_last;
 
   // Active co-offender ties, keyed by node pair, holding their expiry time.
@@ -113,6 +125,49 @@ List attach_history_cpp(NumericVector t, IntegerVector node_ptr,
       }
     }
 
+    if (cycles) {
+      // Shared events of each old joiner u with each partner v within the
+      // window, dropping older ones (and empty partners) as they are seen.
+      const double cut = t[k] - window;
+      for (size_t a = 0; a < perps.size(); ++a) {
+        if (born[perps[a]] < k) joined_now[perps[a]] = 1;
+      }
+      for (size_t a = 0; a < perps.size(); ++a) {
+        const int u = perps[a];
+        if (born[u] >= k) continue;
+        for (auto it = shared[u].begin(); it != shared[u].end();) {
+          std::vector<double>& tt = it->second;
+          size_t drop = 0;
+          while (drop < tt.size() && tt[drop] < cut) ++drop;
+          if (drop > 0) tt.erase(tt.begin(), tt.begin() + drop);
+          if (tt.empty()) {
+            it = shared[u].erase(it);
+            continue;
+          }
+          const int v = it->first;
+          if (zc[v] == 0) zc_list.push_back(v);
+          zc[v] += (int)tt.size();
+          ++it;
+        }
+      }
+      for (size_t a = 0; a < zc_list.size(); ++a) {
+        const int v = zc_list[a];
+        cyc_idx.push_back(k);
+        cyc_node.push_back(v);
+        cyc_z.push_back(zc[v]);
+        cyc_y.push_back(joined_now[v]);
+        zc[v] = 0;
+      }
+      zc_list.clear();
+      for (size_t a = 0; a < perps.size(); ++a) joined_now[perps[a]] = 0;
+      for (size_t a = 0; a < perps.size(); ++a) {
+        for (size_t b = a + 1; b < perps.size(); ++b) {
+          shared[perps[a]][perps[b]].push_back(t[k]);
+          shared[perps[b]][perps[a]].push_back(t[k]);
+        }
+      }
+    }
+
     // After the event: attendance, recency and new or renewed ties.
     for (size_t a = 0; a < perps.size(); ++a) {
       const int v = perps[a];
@@ -152,7 +207,9 @@ List attach_history_cpp(NumericVector t, IntegerVector node_ptr,
     _["upd_ptr"] = ptr(upd_idx), _["upd_node"] = wrap(upd_node),
     _["upd_deg"] = wrap(upd_deg), _["upd_last"] = wrap(upd_last),
     _["upd_x"] = wrap(upd_x), _["upd_y"] = wrap(upd_y),
-    _["obs_ptr"] = ptr(obs_idx), _["obs_node"] = wrap(obs_node)
+    _["obs_ptr"] = ptr(obs_idx), _["obs_node"] = wrap(obs_node),
+    _["cyc_ptr"] = ptr(cyc_idx), _["cyc_node"] = wrap(cyc_node),
+    _["cyc_z"] = wrap(cyc_z), _["cyc_y"] = wrap(cyc_y)
   );
 }
 
@@ -162,21 +219,42 @@ List attach_history_cpp(NumericVector t, IntegerVector node_ptr,
 // transformed); use_degree drops the
 // (d + delta) factor. gl_x and gl_w are a Gauss-Legendre rule on [-1, 1],
 // used panel by panel for the random-effect integrals.
+//
+// 4-cycles (theta_c, from the cyc_* lists of attach_history_cpp, cyc_z
+// already transformed) make joins at an event depend on each other. Each
+// old perp v is then scored by its conditional given the others at event k,
+//   logit P(v joins | rest) = log(expm1(q_v)) + theta_c z_vk,
+// the full conditionals of a per-event autologistic model, so this is a
+// pseudo-likelihood; at theta_c = 0 it is the likelihood above. Perps with
+// z_vk = 0 keep their independent terms, so only the cyc_* entries change.
+// With per_event, the gradient of each event's contribution is returned as
+// a row of `scores`, for sandwich standard errors.
+//
+// Returns value = (ll, d/dm, d/dbeta, d/ddelta, d/dtheta_1..P,
+// d/drandom_effect_var, d/dtheta_c).
 // [[Rcpp::export]]
-NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
+List attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
                             IntegerVector upd_node, IntegerVector upd_deg,
                             NumericVector upd_last, NumericMatrix upd_feat,
                             IntegerVector obs_ptr, IntegerVector obs_node,
                             int n_nodes, double m, double beta, double delta,
                             NumericVector theta, bool use_degree, double random_effect_var,
-                            NumericVector gl_x, NumericVector gl_w) {
+                            NumericVector gl_x, NumericVector gl_w,
+                            IntegerVector cyc_ptr, IntegerVector cyc_node,
+                            NumericVector cyc_z, IntegerVector cyc_y, double theta_c,
+                            bool per_event) {
   const int n_ev = t.size();
   const int P = theta.size();
+  const int NG = 5 + P;  // gradient entries
   if (upd_feat.ncol() != P) stop("upd_feat needs one column per theta.");
-  NumericVector fail(5 + P, NA_REAL);
-  fail[0] = R_NegInf;
+  const bool has_cyc = cyc_ptr.size() == n_ev + 1;
+  NumericVector fail_v(NG + 1, NA_REAL);
+  fail_v[0] = R_NegInf;
+  const List fail = List::create(_["value"] = fail_v, _["scores"] = R_NilValue);
   // Below 1e-8 the random-effect term is numerically the model without it.
   const bool has_re = random_effect_var > 1e-8;
+  if (has_re && has_cyc) stop("4-cycles cannot be combined with the random effect.");
+  if (has_re && per_event) stop("Per-event scores are not available with the random effect.");
 
   std::vector<char> active(n_nodes, 0);
   // feat[P * v + j]: perp v's statistic j.
@@ -237,8 +315,18 @@ NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
     seg_dd.push_back(dd[v]);
   };
 
-  double ll = 0.0, g_m = 0.0, g_beta = 0.0, g_delta = 0.0, g_fv = 0.0;
+  double ll = 0.0, g_m = 0.0, g_beta = 0.0, g_delta = 0.0, g_fv = 0.0, g_c = 0.0;
   std::vector<double> g_theta(P, 0.0);
+  // Per-event scores: the change in each gradient entry over event k.
+  NumericMatrix scores(per_event ? n_ev : 0, per_event ? NG : 0);
+  std::vector<double> gprev(NG, 0.0);
+  auto grad_now = [&](std::vector<double>& g) {
+    g[0] = g_m; g[1] = g_beta; g[2] = g_delta;
+    for (int j = 0; j < P; ++j) g[3 + j] = g_theta[j];
+    g[3 + P] = g_fv; g[4 + P] = g_c;
+  };
+  std::vector<double> gcur(NG, 0.0);
+  auto log1pexp = [](double x) { return x > 0 ? x + std::log1p(std::exp(-x)) : std::log1p(std::exp(x)); };
   for (int k = 0; k < n_ev; ++k) {
     // Decay to t_k; A follows the same recursion as the Hawkes R term.
     const double dt = t[k] - tc;
@@ -319,6 +407,38 @@ NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
       g_beta += rq * (-a - Gb);
       if (use_degree) g_delta += rq * (1.0 / dd[v] - Gd);
       for (int j = 0; j < P; ++j) g_theta[j] += rq * (feat[(size_t)P * v + j] - Gt[j]);
+    }
+
+    // 4-cycles: swap the independent terms of perps with z > 0 for their
+    // conditionals given the rest of the event.
+    if (has_cyc) {
+      for (int o = cyc_ptr[k]; o < cyc_ptr[k + 1]; ++o) {
+        const int v = cyc_node[o];
+        const bool y = cyc_y[o] == 1;
+        const double a = tc - last[v];
+        const double q = m * c[v] * std::exp(-beta * a) / W;
+        if (!(q > 0.0) || !std::isfinite(q)) return fail;
+        const double eta = std::log(std::expm1(q)), x = eta + theta_c * cyc_z[o];
+        const double cond = y ? -log1pexp(-x) : -log1pexp(x);
+        const double indep = y ? eta - q : -q;
+        ll += cond - indep;
+        const double sig = 1.0 / (1.0 + std::exp(-x));
+        g_c += ((y ? 1.0 : 0.0) - sig) * cyc_z[o];
+        // d(cond - indep) / d log q
+        const double dq = q * (((y ? 1.0 : 0.0) - sig) / (-std::expm1(-q)) -
+                               (y ? 1.0 / std::expm1(q) : -1.0));
+        g_m += dq / m;
+        g_beta += dq * (-a - Gb);
+        if (use_degree) g_delta += dq * (1.0 / dd[v] - Gd);
+        for (int j = 0; j < P; ++j) g_theta[j] += dq * (feat[(size_t)P * v + j] - Gt[j]);
+      }
+    }
+    if (per_event) {
+      grad_now(gcur);
+      for (int j = 0; j < NG; ++j) {
+        scores(k, j) = gcur[j] - gprev[j];
+        gprev[j] = gcur[j];
+      }
     }
   }
 
@@ -515,12 +635,9 @@ NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
     }
     if (!std::isfinite(ll)) return fail;
   }
-  NumericVector out(5 + P);
+  NumericVector out(NG + 1);
   out[0] = ll;
-  out[1] = g_m;
-  out[2] = g_beta;
-  out[3] = g_delta;
-  for (int j = 0; j < P; ++j) out[4 + j] = g_theta[j];
-  out[4 + P] = g_fv;
-  return out;
+  grad_now(gcur);
+  for (int j = 0; j < NG; ++j) out[1 + j] = gcur[j];
+  return List::create(_["value"] = out, _["scores"] = per_event ? (SEXP)scores : R_NilValue);
 }

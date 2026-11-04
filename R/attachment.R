@@ -18,9 +18,8 @@
 #'     with multiplicity, \eqn{\sum_j (n_j - 1)} (`paths`).
 #' }
 #' Both count only events at most `coffender_window` before \eqn{t_k}.
-#' Configurations that involve other perps at event \eqn{k} itself (event
-#' stars, 4-cycles) are not included, so joins stay independent given the
-#' past. It joins
+#' These depend only on \eqn{v}'s own history, so joins stay independent
+#' given the past. It joins
 #' independently with probability
 #' \deqn{p_v = 1 - \exp(-m\, w_v / W), \qquad W = \textstyle\sum_u w_u,}
 #' so `m` is close to the expected number of returning perps per event when
@@ -55,6 +54,24 @@
 #' `random_effect`); see [attachment_param_names()]. With `degree`,
 #' `coffenders` and `paths` all `FALSE` the weights depend on recency only.
 #'
+#' With `cycles = TRUE` joins at the same event depend on each other through
+#' the 4-cycle change statistic \eqn{z_{vk} = h(\cdot)} of the number of
+#' 4-cycles \eqn{k - v - j - u - k} that \eqn{v} joining closes: one for each
+#' other old perp \eqn{u} at event \eqn{k} and earlier event \eqn{j} (within
+#' `coffender_window`) that \eqn{u} and \eqn{v} both attended, i.e. past
+#' co-offenders turning up together. Each old perp is scored by its
+#' conditional given the others at the event,
+#' \deqn{\mathrm{logit}\, P(v \text{ joins} \mid \text{rest}) =
+#'   \log(e^{q_v} - 1) + \theta_c z_{vk}, \qquad q_v = m w_v / W,}
+#' the full conditionals of an autologistic model for each event, so the
+#' fit maximises a pseudo-likelihood. At \eqn{\theta_c = 0} (`theta_cycles`)
+#' this is the model above exactly. A pseudo-likelihood is not a likelihood:
+#' standard errors from its Hessian are wrong (typically too small), so use
+#' [attachment_vcov()], and likelihood-ratio tests and AIC do not apply to
+#' models with `cycles`. It cannot be combined with `random_effect`. Given
+#' each perp's propensity joins are independent, so a fixed propensity does
+#' not by itself make past co-offenders turn up together.
+#'
 #' Since \eqn{\sum_v m w_v / W = m}, each evaluation needs only the running
 #' sum \eqn{W}, so its cost grows with the number of events and perp
 #' appearances, not with events times perps.
@@ -70,6 +87,8 @@
 #'   `coffenders` and `paths`. `Inf` (the default) counts all.
 #' @param paths Logical; include \eqn{e^{\theta_p y_v}} (3-paths, i.e.
 #'   co-offenders with multiplicity).
+#' @param cycles Logical; let joins depend on past co-offenders at the same
+#'   event through 4-cycles (`theta_cycles`), fitted by pseudo-likelihood.
 #' @param new_perps Distribution of the new-perp count: `"poisson"` (default)
 #'   or `"negbin"`.
 #' @param min_perps `0` (default) allows events with no perps; `1` requires at
@@ -83,7 +102,7 @@
 #' @export
 attachment_spec <- function(degree = TRUE, coffenders = FALSE,
                             coffender_scale = c("log1p", "linear"),
-                            coffender_window = Inf, paths = FALSE,
+                            coffender_window = Inf, paths = FALSE, cycles = FALSE,
                             new_perps = c("poisson", "negbin"), min_perps = 0,
                             random_effect = FALSE, random_effect_nodes = 8L) {
   coffender_scale <- match.arg(coffender_scale)
@@ -92,10 +111,13 @@ attachment_spec <- function(degree = TRUE, coffenders = FALSE,
     stop("`min_perps` must be 0 or 1.", call. = FALSE)
   }
   stopifnot(is.numeric(coffender_window), length(coffender_window) == 1L, coffender_window >= 0)
+  if (isTRUE(cycles) && isTRUE(random_effect)) {
+    stop("`cycles` cannot be combined with `random_effect`.", call. = FALSE)
+  }
   structure(
     list(degree = isTRUE(degree), coffenders = isTRUE(coffenders),
          coffender_scale = coffender_scale, coffender_window = coffender_window,
-         paths = isTRUE(paths), new_perps = new_perps, min_perps = as.integer(min_perps),
+         paths = isTRUE(paths), cycles = isTRUE(cycles), new_perps = new_perps, min_perps = as.integer(min_perps),
          random_effect = isTRUE(random_effect), random_effect_nodes = as.integer(random_effect_nodes)),
     class = "attachment_spec"
   )
@@ -110,7 +132,7 @@ attachment_param_names <- function(spec) {
   if (is.null(spec)) return(character(0))
   c("m", "beta_edges", if (spec$degree) "delta", .attach_theta_names(spec), "lambda_new",
     if (spec$min_perps == 1L) "lambda_new0", if (spec$new_perps == "negbin") "size_new",
-    if (isTRUE(spec$random_effect)) "random_effect_var")
+    if (isTRUE(spec$random_effect)) "random_effect_var", if (isTRUE(spec$cycles)) "theta_cycles")
 }
 
 # Internal: log-likelihood of the new-perp counts given the old-perp counts,
@@ -144,6 +166,28 @@ attachment_param_names <- function(spec) {
   ll
 }
 
+# Internal: each event's contribution to the gradient of .new_perp_count_ll(),
+# one row per event.
+.new_perp_count_scores <- function(spec, n_new, n_old, params) {
+  shifted <- spec$min_perps == 1L & n_old == 0L
+  y <- n_new - shifted
+  nb <- spec$new_perps == "negbin"
+  nms <- c("lambda_new", if (spec$min_perps == 1L) "lambda_new0", if (nb) "size_new")
+  S <- matrix(0, length(y), length(nms), dimnames = list(NULL, nms))
+  mu <- ifelse(shifted, params[["lambda_new0"]] %||% NA_real_, params[["lambda_new"]])
+  if (!nb) {
+    d_mu <- y / mu - 1
+  } else {
+    size <- params[["size_new"]]
+    d_mu <- y / mu - (y + size) / (size + mu)
+    S[, "size_new"] <- digamma(y + size) - digamma(size) + log(size / (size + mu)) +
+      1 - (y + size) / (size + mu)
+  }
+  S[!shifted, "lambda_new"] <- d_mu[!shifted]
+  if (spec$min_perps == 1L) S[shifted, "lambda_new0"] <- d_mu[shifted]
+  S
+}
+
 .coffender_feature <- function(spec, n) {
   if (spec$coffender_scale == "log1p") log1p(n) else as.numeric(n)
 }
@@ -170,15 +214,21 @@ compile_logpmf_attach <- function(events, spec) {
   if (all(is.na(a$role))) stop("Attachment needs node roles 'event' and 'perp'.", call. = FALSE)
   f <- .bip_focal(a)
   invalid <- !all(f$valid)
+  cycles <- isTRUE(spec$cycles)
   h <- if (invalid) NULL else attach_history_cpp(a$t, a$node_ptr, a$edge_ptr, a$edge_i, a$edge_j,
-                                                 f$focal, length(a$ids), spec$coffender_window)
+                                                 f$focal, length(a$ids), spec$coffender_window,
+                                                 cycles)
+  cyc_z <- if (cycles && !invalid) .coffender_feature(spec, h$cyc_z) else numeric(0)
+  no_cyc <- integer(0)
   th_names <- .attach_theta_names(spec)
   feat <- if (invalid) NULL else .attach_features(spec, h)
   n_old <- if (invalid) integer(0) else diff(h$obs_ptr)
   gl <- .gauss_legendre(spec$random_effect_nodes %||% 8L)
 
-  # With `gradient = TRUE` the value carries attribute "gradient".
-  function(params, gradient = FALSE) {
+  # With `gradient = TRUE` the value carries attribute "gradient", and with
+  # `scores = TRUE` attribute "scores": each event's contribution to it, one
+  # row per event (not available with the random effect).
+  function(params, gradient = FALSE, scores = FALSE) {
     get <- function(nm, default) if (nm %in% names(params)) params[[nm]] else default
     m <- get("m", NA_real_)
     beta_edges <- get("beta_edges", NA_real_)
@@ -188,24 +238,35 @@ compile_logpmf_attach <- function(events, spec) {
     lambda_new0 <- if (spec$min_perps == 1L) get("lambda_new0", NA_real_) else 1
     size_new <- if (spec$new_perps == "negbin") get("size_new", NA_real_) else 1
     random_effect_var <- if (isTRUE(spec$random_effect)) get("random_effect_var", NA_real_) else 0
+    theta_c <- if (cycles) get("theta_cycles", NA_real_) else 0
 
     ok <- function(x) is.numeric(x) && length(x) == 1L && is.finite(x)
     if (!ok(m) || m <= 0 || !ok(beta_edges) || beta_edges < 0 || !ok(lambda_new) || lambda_new < 0 ||
         !ok(delta) || delta < 0 || !all(is.finite(theta)) ||
         !ok(lambda_new0) || lambda_new0 < 0 || !ok(size_new) || size_new <= 0 ||
-        !ok(random_effect_var) || random_effect_var < 0) return(-Inf)
+        !ok(random_effect_var) || random_effect_var < 0 || !ok(theta_c)) return(-Inf)
     if (invalid) return(-Inf)
 
-    r <- attach_ll_cpp(a$t, h$upd_ptr, h$upd_node, h$upd_deg, h$upd_last, feat,
-                       h$obs_ptr, h$obs_node, length(a$ids), m, beta_edges, delta, theta,
-                       spec$degree, random_effect_var, gl$x, gl$w)
+    out <- attach_ll_cpp(a$t, h$upd_ptr, h$upd_node, h$upd_deg, h$upd_last, feat,
+                         h$obs_ptr, h$obs_node, length(a$ids), m, beta_edges, delta, theta,
+                         spec$degree, random_effect_var, gl$x, gl$w,
+                         if (cycles) h$cyc_ptr else no_cyc, if (cycles) h$cyc_node else no_cyc,
+                         cyc_z, if (cycles) h$cyc_y else no_cyc, theta_c, scores)
+    r <- out$value
     counts <- .new_perp_count_ll(spec, f$n_new, n_old, params, gradient = gradient)
     ll <- as.numeric(counts) + r[1L]
+    keep <- attachment_param_names(spec)
+    P <- length(th_names)
+    walk_names <- c("m", "beta_edges", "delta", th_names, "random_effect_var", "theta_cycles")
     if (gradient && is.finite(ll)) {
-      P <- length(th_names)
-      g <- c(m = r[2L], beta_edges = r[3L], delta = r[4L], stats::setNames(r[4L + seq_len(P)], th_names),
-             attr(counts, "gradient"), random_effect_var = r[5L + P])
-      attr(ll, "gradient") <- g[intersect(names(g), attachment_param_names(spec))]
+      g <- c(stats::setNames(r[-1L], walk_names), attr(counts, "gradient"))
+      attr(ll, "gradient") <- g[intersect(keep, names(g))]
+    }
+    if (scores && is.finite(ll)) {
+      S <- out$scores
+      colnames(S) <- walk_names
+      S <- cbind(S, .new_perp_count_scores(spec, f$n_new, n_old, params))
+      attr(ll, "scores") <- S[, keep, drop = FALSE]
     }
     ll
   }
@@ -233,6 +294,7 @@ compile_logpmf_attach <- function(events, spec) {
         random_effect_shape <- if (fv > 0) 1 / fv else Inf
       }
       sim <<- attach_sim_new(params, spec$degree, spec$coffenders, isTRUE(spec$paths),
+                             isTRUE(spec$cycles),
                              spec$coffender_scale == "log1p", spec$coffender_window,
                              spec$new_perps == "negbin", spec$min_perps == 1L,
                              random_effect_shape, t_k)
