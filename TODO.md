@@ -107,6 +107,17 @@ configurations, when added, by pseudo-likelihood.
   event within h) and `theta_cycles` (beyond h, up to the window).
   `excitation_spec(connectedness_min_gap = h)` leaves same-episode events
   out of connectedness, so the fast kernel carries within-episode excitation.
+- [x] **Mark-path dependent excitation** (`excitation_spec(path_dependent =
+  TRUE)`, the hawkesNet paper's Definition 4.1). `c_i(t)` also counts later
+  events sharing a perp with event i (same window and minimum gap, after
+  `t_i`), so an event's excitation changes after it happens. Each change acts
+  as an extra jump at the later event, discounted by `exp(-beta * lag)`, so
+  the likelihood stays an exact O(events + links) recursion; the jumps now
+  depend on `beta`. Brute-force, gradient, simulator-calibration and
+  recovery tests. Much less stable than the fixed-at-birth form: with
+  `gamma = 0.8`, window 5, `lambda_new = 0.5` the simulator ran away, and
+  the paper's contraction condition fails for it. `gamma` here is partly
+  defined by later offending, so it is not the connectedness effect.
 - [ ] **Refit the real data with the episode gap** (h = 1 day, and 1 hour /
   1 week as checks): does `theta_cycles` beyond h stay out of the
   degenerate range, and do `gamma`, `theta` and the fast kernel change?

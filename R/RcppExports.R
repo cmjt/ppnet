@@ -25,7 +25,15 @@ event_summary_cpp <- function(t, node_ptr, edge_ptr, edge_i, edge_j, focal, n_no
     .Call(`_ppnet_event_summary_cpp`, t, node_ptr, edge_ptr, edge_i, edge_j, focal, n_nodes, window, min_gap)
 }
 
-time_ll_cpp <- function(t, mu_ev, g, Z, K, beta, T_end, K2 = 0.0, beta2 = 1.0) {
-    .Call(`_ppnet_time_ll_cpp`, t, mu_ev, g, Z, K, beta, T_end, K2, beta2)
+connectedness_updates_cpp <- function(t, node_ptr, edge_ptr, edge_i, edge_j, focal, n_nodes, window, min_gap = 0.0) {
+    .Call(`_ppnet_connectedness_updates_cpp`, t, node_ptr, edge_ptr, edge_i, edge_j, focal, n_nodes, window, min_gap)
+}
+
+time_ll_cpp <- function(t, mu_ev, G, dG, dGb, K, beta, T_end, K2 = 0.0, beta2 = 1.0) {
+    .Call(`_ppnet_time_ll_cpp`, t, mu_ev, G, dG, dGb, K, beta, T_end, K2, beta2)
+}
+
+path_jumps_cpp <- function(t, logn, c0, upd_ptr, upd_j, upd_c, alpha, gamma, size, log1p_scale, beta) {
+    .Call(`_ppnet_path_jumps_cpp`, t, logn, c0, upd_ptr, upd_j, upd_c, alpha, gamma, size, log1p_scale, beta)
 }
 

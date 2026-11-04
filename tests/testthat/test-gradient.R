@@ -71,6 +71,24 @@ test_that("excitation gradient matches central differences", {
              modifyList(p, list(alpha = 0.2, gamma = -0.1)))
 })
 
+test_that("path-dependent excitation gradient matches central differences", {
+  # beta now also enters the jump sizes, through the discounted updates.
+  local_min_one_perp()
+  set.seed(59)
+  sp <- excitation_spec(size = TRUE, connectedness = TRUE, connectedness_window = 4,
+                        path_dependent = TRUE)
+  p <- list(mu = 1, K = 0.3, beta = 0.8, K_fast = 2, beta_fast = 8, beta_edges = 0.3,
+            lambda_new = 0.9, alpha = 0.5, gamma = 0.3)
+  ev <- sim_hawkesNet(p, T_end = 15, mark_type = "ba_bip", kernel = "exp2", excitation = sp)$ev
+  check_grad(.build_loglik_fn(ev, T_end = 16, mark_type = "ba_bip", kernel = "exp2",
+                              excitation = sp),
+             modifyList(p, list(alpha = 0.2, gamma = -0.1, beta = 1.1)))
+  lin <- excitation_spec(size = FALSE, connectedness = TRUE, connectedness_scale = "linear",
+                         connectedness_window = 4, path_dependent = TRUE)
+  check_grad(.build_loglik_fn(ev, T_end = 16, mark_type = "ba_bip", excitation = lin),
+             p[c("mu", "K", "beta", "beta_edges", "lambda_new", "gamma")])
+})
+
 test_that("attachment gradient matches central differences", {
   set.seed(58)
   sp <- attachment_spec(degree = TRUE, coffenders = TRUE, coffender_window = 3)

@@ -88,11 +88,7 @@ temporal_intensity_from_cache <- function(cache, mu, K, beta, kernel_density = F
     stop("`excitation` must be NULL or an excitation_spec().", call. = FALSE)
   }
   # Excitation covariates are marks of the observed history, fixed by the data.
-  Z_exc <- if (is.null(excitation)) {
-    matrix(0, nrow = length(event_times), ncol = 0L)
-  } else {
-    .excitation_design(excitation, events)
-  }
+  exc_design <- if (!is.null(excitation)) .excitation_design(excitation, events)
 
   # Grab the lists of node and edge arrivals by event
   arrivals <- nodes_by_event(events)
@@ -211,14 +207,16 @@ temporal_intensity_from_cache <- function(cache, mu, K, beta, kernel_density = F
     if (!is.finite(mark_ll_total)) return(-Inf)
 
     if (is.null(excitation)) {
-      g_exc <- rep.int(1, length(event_times))
+      jumps <- list(G = rep.int(1, length(event_times)),
+                    dG = matrix(0, nrow = length(event_times), ncol = 0L), dGb = numeric(0))
     } else {
       a <- .excitation_coefs(excitation, params)
       if (any(!is.finite(a))) return(-Inf)
-      g_exc <- exp(drop(Z_exc %*% a))
+      jumps <- .excitation_jumps(excitation, exc_design, a, beta)
     }
 
-    tm <- time_ll_cpp(event_times, mu_ev, g_exc, Z_exc, K, beta, T_end, K_fast, beta_fast)
+    tm <- time_ll_cpp(event_times, mu_ev, jumps$G, jumps$dG, jumps$dGb, K, beta, T_end,
+                      K_fast, beta_fast)
     if (!is.finite(tm$ll)) return(-Inf)
 
     # Debug plot (two panels), replaying the history one event at a time
@@ -246,7 +244,7 @@ temporal_intensity_from_cache <- function(cache, mu, K, beta, kernel_density = F
           g_b <- drop(crossprod(X_ev, g_ev) - crossprod(quad$X, mu_quad))
           g <- c(g, g_b)
         }
-        if (!is.null(excitation)) g <- c(g, stats::setNames(tm$da, colnames(Z_exc)))
+        if (!is.null(excitation)) g <- c(g, stats::setNames(tm$da, excitation_coef_names(excitation)))
         if (kernel == "exp2") g <- c(g, K_fast = tm$dK2, beta_fast = tm$dbeta2)
         attr(ll, "gradient") <- c(g, mark_grad)
       }

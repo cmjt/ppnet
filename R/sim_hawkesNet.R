@@ -92,6 +92,12 @@ sim_hawkesNet <- function(
     }
     a_exc <- .excitation_coefs(excitation, params)
     perp_history <- new.env(hash = TRUE)
+    # Path dependence: each event's perp count and current connectedness, so
+    # its excitation can be updated when later events link to it.
+    path_dep <- isTRUE(excitation$path_dependent)
+    n_perps_ev <- numeric(64)
+    conn_ev <- numeric(64)
+    g_of <- function(n, cn) exp(sum(.excitation_z(excitation, n, cn) * a_exc))
   }
 
   # Mark kernel dispatch
@@ -222,10 +228,22 @@ sim_hawkesNet <- function(
         gap <- t_prop - events_t[past]
         past <- past[gap <= excitation$connectedness_window &
                        gap > (excitation$connectedness_min_gap %||% 0)]
-        z_k <- .excitation_z(excitation, length(perps), length(past))
-        g_k <- exp(sum(z_k * a_exc))
+        g_k <- g_of(length(perps), length(past))
         k <- n_events + 1L
         for (v in perps) assign(v, c(perp_history[[v]], k), envir = perp_history)
+        if (path_dep) {
+          # Earlier linked events gain one connectedness now; their change in
+          # excitation enters the slow sum discounted to t_prop.
+          for (j in past) {
+            dg <- g_of(n_perps_ev[j], conn_ev[j] + 1) - g_of(n_perps_ev[j], conn_ev[j])
+            cache_prop$S <- cache_prop$S + dg * exp(-beta * (t_prop - events_t[j]))
+            conn_ev[j] <- conn_ev[j] + 1
+          }
+          n_perps_ev <- grow(n_perps_ev, k)
+          conn_ev <- grow(conn_ev, k)
+          n_perps_ev[k] <- length(perps)
+          conn_ev[k] <- length(past)
+        }
       }
       cache_prop$S <- cache_prop$S + g_k
       cache_f_prop$S <- cache_f_prop$S + 1

@@ -78,8 +78,11 @@ diag_temporal <- function(events, params, T_end = NULL, T0 = 0,
   }
 
   # Kernel components: (K, beta, jump sizes); excitation scales the slow one
+  # With path-dependent excitation these are the effective jumps, which
+  # carry the later changes in each event's excitation.
   g <- if (is.null(excitation)) rep.int(1, n) else {
-    exp(drop(.excitation_design(excitation, events) %*% .excitation_coefs(excitation, params)))
+    .excitation_jumps(excitation, .excitation_design(excitation, events),
+                      .excitation_coefs(excitation, params), beta)$G
   }
   comps <- list(list(K = K, beta = beta, g = g))
   if (kernel == "exp2") {

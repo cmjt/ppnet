@@ -9,7 +9,8 @@ excitation_spec(
   connectedness = FALSE,
   connectedness_scale = c("log1p", "linear"),
   connectedness_window = Inf,
-  connectedness_min_gap = 0
+  connectedness_min_gap = 0,
+  path_dependent = FALSE
 )
 }
 \arguments{
@@ -31,6 +32,23 @@ event \eqn{i} count towards \eqn{c_i}. Records of the same episode (e.g.
 minutes apart) are then left to the kernel, typically the fast component
 of \code{kernel = "exp2"}, instead of making an event look connected. \code{0} (the
 default) counts all.}
+
+\item{path_dependent}{Logical. \code{FALSE} (the default) fixes \eqn{c_i} at
+event \eqn{i}, from the events before it. \code{TRUE} makes the excitation
+mark-path dependent: \eqn{c_i(t)} also counts the later events, before
+\eqn{t}, that share a perp with event \eqn{i} (with the same window and
+minimum gap, now after \eqn{t_i}), so an event's effect on the intensity
+grows as its perps go on to offend again,
+\deqn{\lambda(t) = \mu(t) + K \sum_{t_i < t} n_i^{\alpha}
+  \exp\{\gamma\, h(c_i(t))\}\, e^{-\beta (t - t_i)}.}
+Needs \code{connectedness = TRUE}. The likelihood stays exact: each change in
+\eqn{c_i} acts as an extra jump at the time of the later event. \code{gamma}
+then measures how much an event's effect depends on its perps' later
+offending together, which is partly the outcome itself, so it is harder
+to read as an effect of connectedness on later offending. Stability is
+weaker too: with \code{gamma > 0} and an infinite window an old event's effect
+can keep growing; a finite \code{connectedness_window} stops each event's
+\eqn{c_i} changing once it is that old.}
 }
 \value{
 An object of class \code{excitation_spec}.

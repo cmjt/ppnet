@@ -97,21 +97,22 @@ NumericVector mark_ll_attach_cpp(NumericVector t, IntegerVector node_ptr,
   return NumericVector::create(ll, grad);
 }
 
-// Per-event summaries for a bipartite event-perp history: the event's perps
-// are the neighbours of focal[k] (its event node) among edges of event k.
-// connectedness is the number of distinct earlier events, more than
-// `min_gap` and no more than `window` before event k, that share at least one
-// perp with it.
-// [[Rcpp::export]]
-DataFrame event_summary_cpp(NumericVector t, IntegerVector node_ptr, IntegerVector edge_ptr,
-                            IntegerVector edge_i, IntegerVector edge_j,
-                            IntegerVector focal, int n_nodes, double window,
-                            double min_gap = 0.0) {
+// Walk a bipartite event-perp history: the event's perps are the neighbours
+// of focal[k] (its event node) among edges of event k. For each event, links
+// holds the distinct earlier events, more than `min_gap` and no more than
+// `window` before it, that share at least one perp with it (in the order
+// first met), and n_perps / n_old count its perps and those born earlier.
+static void link_walk(NumericVector t, IntegerVector node_ptr, IntegerVector edge_ptr,
+                      IntegerVector edge_i, IntegerVector edge_j, IntegerVector focal,
+                      int n_nodes, double window, double min_gap,
+                      std::vector<std::vector<int> >& links,
+                      std::vector<int>& n_perps, std::vector<int>& n_old) {
   const int n_ev = focal.size();
-
   std::vector<int> born(n_nodes, -1), seen(n_ev, -1);
   std::vector<std::vector<int> > history(n_nodes);
-  IntegerVector n_perps(n_ev), n_new(n_ev), n_old(n_ev), connectedness(n_ev);
+  links.assign(n_ev, std::vector<int>());
+  n_perps.assign(n_ev, 0);
+  n_old.assign(n_ev, 0);
 
   for (int k = 0; k < n_ev; ++k) {
     for (int v = node_ptr[k]; v < node_ptr[k + 1]; ++v) born[v] = k;
@@ -122,27 +123,78 @@ DataFrame event_summary_cpp(NumericVector t, IntegerVector node_ptr, IntegerVect
       else if (edge_j[e] == focal[k]) perps.push_back(edge_i[e]);
     }
 
-    int linked = 0, old = 0;
     for (size_t a = 0; a < perps.size(); ++a) {
       const int v = perps[a];
-      if (born[v] < k) ++old;
+      if (born[v] < k) ++n_old[k];
       const std::vector<int>& h = history[v];
       for (size_t b = 0; b < h.size(); ++b) {
         const double gap = t[k] - t[h[b]];
         if (seen[h[b]] != k && gap <= window && gap > min_gap) {
           seen[h[b]] = k;
-          ++linked;
+          links[k].push_back(h[b]);
         }
       }
     }
     for (size_t a = 0; a < perps.size(); ++a) history[perps[a]].push_back(k);
-
     n_perps[k] = perps.size();
-    n_old[k] = old;
-    n_new[k] = n_perps[k] - old;
-    connectedness[k] = linked;
   }
+}
 
+// Per-event summaries for a bipartite event-perp history; connectedness is
+// the number of linked earlier events (see link_walk()).
+// [[Rcpp::export]]
+DataFrame event_summary_cpp(NumericVector t, IntegerVector node_ptr, IntegerVector edge_ptr,
+                            IntegerVector edge_i, IntegerVector edge_j,
+                            IntegerVector focal, int n_nodes, double window,
+                            double min_gap = 0.0) {
+  const int n_ev = focal.size();
+  std::vector<std::vector<int> > links;
+  std::vector<int> np, no;
+  link_walk(t, node_ptr, edge_ptr, edge_i, edge_j, focal, n_nodes, window, min_gap,
+            links, np, no);
+
+  IntegerVector n_perps(n_ev), n_new(n_ev), n_old(n_ev), connectedness(n_ev);
+  for (int k = 0; k < n_ev; ++k) {
+    n_perps[k] = np[k];
+    n_old[k] = no[k];
+    n_new[k] = np[k] - no[k];
+    connectedness[k] = links[k].size();
+  }
   return DataFrame::create(_["n_perps"] = n_perps, _["n_new"] = n_new,
                            _["n_old"] = n_old, _["connectedness"] = connectedness);
+}
+
+// Connectedness updates for path-dependent excitation. Event k links to the
+// earlier events in links[k]; each of those gains one to its connectedness
+// at t_k. Returns, 0-based, upd_ptr (event k's updates are
+// upd_ptr[k] .. upd_ptr[k + 1] - 1), upd_j (the event updated) and upd_c (its
+// connectedness just before the update), with c0 the connectedness at birth.
+// [[Rcpp::export]]
+List connectedness_updates_cpp(NumericVector t, IntegerVector node_ptr, IntegerVector edge_ptr,
+                               IntegerVector edge_i, IntegerVector edge_j,
+                               IntegerVector focal, int n_nodes, double window,
+                               double min_gap = 0.0) {
+  const int n_ev = focal.size();
+  std::vector<std::vector<int> > links;
+  std::vector<int> np, no;
+  link_walk(t, node_ptr, edge_ptr, edge_i, edge_j, focal, n_nodes, window, min_gap,
+            links, np, no);
+
+  IntegerVector c0(n_ev), upd_ptr(n_ev + 1);
+  std::vector<int> cnt(n_ev, 0), uj, uc;
+  for (int k = 0; k < n_ev; ++k) {
+    upd_ptr[k] = uj.size();
+    for (size_t a = 0; a < links[k].size(); ++a) {
+      const int j = links[k][a];
+      uj.push_back(j);
+      uc.push_back(cnt[j]);
+      ++cnt[j];
+    }
+    c0[k] = links[k].size();
+    cnt[k] = c0[k];
+  }
+  upd_ptr[n_ev] = uj.size();
+  return List::create(_["c0"] = c0, _["upd_ptr"] = upd_ptr,
+                      _["upd_j"] = IntegerVector(uj.begin(), uj.end()),
+                      _["upd_c"] = IntegerVector(uc.begin(), uc.end()));
 }

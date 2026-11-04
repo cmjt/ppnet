@@ -139,22 +139,63 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// connectedness_updates_cpp
+List connectedness_updates_cpp(NumericVector t, IntegerVector node_ptr, IntegerVector edge_ptr, IntegerVector edge_i, IntegerVector edge_j, IntegerVector focal, int n_nodes, double window, double min_gap);
+RcppExport SEXP _ppnet_connectedness_updates_cpp(SEXP tSEXP, SEXP node_ptrSEXP, SEXP edge_ptrSEXP, SEXP edge_iSEXP, SEXP edge_jSEXP, SEXP focalSEXP, SEXP n_nodesSEXP, SEXP windowSEXP, SEXP min_gapSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type t(tSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type node_ptr(node_ptrSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type edge_ptr(edge_ptrSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type edge_i(edge_iSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type edge_j(edge_jSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type focal(focalSEXP);
+    Rcpp::traits::input_parameter< int >::type n_nodes(n_nodesSEXP);
+    Rcpp::traits::input_parameter< double >::type window(windowSEXP);
+    Rcpp::traits::input_parameter< double >::type min_gap(min_gapSEXP);
+    rcpp_result_gen = Rcpp::wrap(connectedness_updates_cpp(t, node_ptr, edge_ptr, edge_i, edge_j, focal, n_nodes, window, min_gap));
+    return rcpp_result_gen;
+END_RCPP
+}
 // time_ll_cpp
-List time_ll_cpp(NumericVector t, NumericVector mu_ev, NumericVector g, NumericMatrix Z, double K, double beta, double T_end, double K2, double beta2);
-RcppExport SEXP _ppnet_time_ll_cpp(SEXP tSEXP, SEXP mu_evSEXP, SEXP gSEXP, SEXP ZSEXP, SEXP KSEXP, SEXP betaSEXP, SEXP T_endSEXP, SEXP K2SEXP, SEXP beta2SEXP) {
+List time_ll_cpp(NumericVector t, NumericVector mu_ev, NumericVector G, NumericMatrix dG, NumericVector dGb, double K, double beta, double T_end, double K2, double beta2);
+RcppExport SEXP _ppnet_time_ll_cpp(SEXP tSEXP, SEXP mu_evSEXP, SEXP GSEXP, SEXP dGSEXP, SEXP dGbSEXP, SEXP KSEXP, SEXP betaSEXP, SEXP T_endSEXP, SEXP K2SEXP, SEXP beta2SEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< NumericVector >::type t(tSEXP);
     Rcpp::traits::input_parameter< NumericVector >::type mu_ev(mu_evSEXP);
-    Rcpp::traits::input_parameter< NumericVector >::type g(gSEXP);
-    Rcpp::traits::input_parameter< NumericMatrix >::type Z(ZSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type G(GSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type dG(dGSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type dGb(dGbSEXP);
     Rcpp::traits::input_parameter< double >::type K(KSEXP);
     Rcpp::traits::input_parameter< double >::type beta(betaSEXP);
     Rcpp::traits::input_parameter< double >::type T_end(T_endSEXP);
     Rcpp::traits::input_parameter< double >::type K2(K2SEXP);
     Rcpp::traits::input_parameter< double >::type beta2(beta2SEXP);
-    rcpp_result_gen = Rcpp::wrap(time_ll_cpp(t, mu_ev, g, Z, K, beta, T_end, K2, beta2));
+    rcpp_result_gen = Rcpp::wrap(time_ll_cpp(t, mu_ev, G, dG, dGb, K, beta, T_end, K2, beta2));
+    return rcpp_result_gen;
+END_RCPP
+}
+// path_jumps_cpp
+List path_jumps_cpp(NumericVector t, NumericVector logn, IntegerVector c0, IntegerVector upd_ptr, IntegerVector upd_j, IntegerVector upd_c, double alpha, double gamma, bool size, bool log1p_scale, double beta);
+RcppExport SEXP _ppnet_path_jumps_cpp(SEXP tSEXP, SEXP lognSEXP, SEXP c0SEXP, SEXP upd_ptrSEXP, SEXP upd_jSEXP, SEXP upd_cSEXP, SEXP alphaSEXP, SEXP gammaSEXP, SEXP sizeSEXP, SEXP log1p_scaleSEXP, SEXP betaSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type t(tSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type logn(lognSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type c0(c0SEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type upd_ptr(upd_ptrSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type upd_j(upd_jSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type upd_c(upd_cSEXP);
+    Rcpp::traits::input_parameter< double >::type alpha(alphaSEXP);
+    Rcpp::traits::input_parameter< double >::type gamma(gammaSEXP);
+    Rcpp::traits::input_parameter< bool >::type size(sizeSEXP);
+    Rcpp::traits::input_parameter< bool >::type log1p_scale(log1p_scaleSEXP);
+    Rcpp::traits::input_parameter< double >::type beta(betaSEXP);
+    rcpp_result_gen = Rcpp::wrap(path_jumps_cpp(t, logn, c0, upd_ptr, upd_j, upd_c, alpha, gamma, size, log1p_scale, beta));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -166,7 +207,9 @@ static const R_CallMethodDef CallEntries[] = {
     {"_ppnet_attach_ll_cpp", (DL_FUNC) &_ppnet_attach_ll_cpp, 23},
     {"_ppnet_mark_ll_attach_cpp", (DL_FUNC) &_ppnet_mark_ll_attach_cpp, 11},
     {"_ppnet_event_summary_cpp", (DL_FUNC) &_ppnet_event_summary_cpp, 9},
-    {"_ppnet_time_ll_cpp", (DL_FUNC) &_ppnet_time_ll_cpp, 9},
+    {"_ppnet_connectedness_updates_cpp", (DL_FUNC) &_ppnet_connectedness_updates_cpp, 9},
+    {"_ppnet_time_ll_cpp", (DL_FUNC) &_ppnet_time_ll_cpp, 10},
+    {"_ppnet_path_jumps_cpp", (DL_FUNC) &_ppnet_path_jumps_cpp, 11},
     {NULL, NULL, 0}
 };
 
