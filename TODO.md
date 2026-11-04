@@ -10,18 +10,25 @@
   Result: with any frailty, `theta` comes out clearly positive and
   significant in every replicate, so a positive `theta` is not evidence of a
   co-offender effect without individual effects (M4).
-- [ ] **Perp-driven null for the event-level `gamma`.** Design choices to
-  settle: how perps offend (Poisson with frailty, or self-exciting per perp),
-  how group events form (e.g. an offending perp recruits past co-offenders
-  with some probability, or groups drawn by size then filled), and whether
-  frailty is linked to group size. In the current simulator
-  event times are generated first and perps are assigned to events afterwards,
-  so event timing cannot depend on who offends, and `gamma` is unbiased under it
-  by construction. The real-data confound is the reverse: prolific perps both
-  make events connected and cause further events. Write a simulator where each
-  perp has its own offending process (rate with frailty, optional
-  self-excitation) and events are formed when perps offend, alone or in groups,
-  with no network effect. Fit the event model and check how often `gamma > 0`.
+- [x] **Perp-driven null for the event-level `gamma`** (`sim_perp_events()`,
+  `GAMMA_null_check.R`). Perps enter over time with exponential careers and
+  offend at rate `rate * u_v` (gamma random effect), optionally self-exciting on
+  their own events or on every event they attend. Each offence is an event
+  whose initiator brings `Poisson(extra_mean * u^size_link)` co-offenders,
+  partly past co-offenders (`p_past`), otherwise active perps weighted by
+  `u^recruit_link`. No rate depends on the network; a burn-in builds history
+  before the window, which starts with an empty network.
+  Result (20 replicates per scenario, generic values, `exc` window 52, `exp`
+  kernel): `gamma` is not pushed positive in any scenario (random-effect variance
+  0, 1, 2; with self-excitation on own or all events; random effect linked to
+  group size). Rejections for `gamma > 0` were 0-16% and for `gamma < 0`
+  5-20%. Without self-excitation the fitted `K` is near 0 and `gamma` is
+  barely identified (huge standard errors). With self-excitation it is well
+  identified and close to 0, slightly negative with own-event excitation.
+  Still to do: rerun at values matched to the real data (dispersion of
+  attendance counts, events per week), and with the `exp2` kernel and the
+  seasonal baseline used in the real fits (`exp2` collapsed to
+  `beta_fast = beta` on these data, so it was left out).
 - [x] **Move the attachment simulator to C++** (`src/attach_sim.cpp`, Fenwick-tree sampling). `.make_sim_mark_attach()` loops
   over every perp at every event in R (co-offender counts especially), which is
   too slow for simulation checks at the size of real data.
