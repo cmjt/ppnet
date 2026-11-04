@@ -100,6 +100,16 @@ configurations, when added, by pseudo-likelihood.
   `theta_cycles` (past co-offenders pull each other in, groups grow, more
   shared events): with m = 1.5 it runs away by `theta_cycles` = 0.9, so
   simulations from a fitted value need checking.
+- [x] **Episode gap** for records minutes apart (sprees, or incidents
+  logged as several events), keeping continuous times. `episode_gap = h` in
+  `attachment_spec()`: `recent = TRUE` adds `theta_recent` (own events within
+  h), and with `cycles` the 4-cycles split into `theta_cycles_short` (shared
+  event within h) and `theta_cycles` (beyond h, up to the window).
+  `excitation_spec(connectedness_min_gap = h)` leaves same-episode events
+  out of connectedness, so the fast kernel carries within-episode excitation.
+- [ ] **Refit the real data with the episode gap** (h = 1 day, and 1 hour /
+  1 week as checks): does `theta_cycles` beyond h stay out of the
+  degenerate range, and do `gamma`, `theta` and the fast kernel change?
 - [ ] **4-cycles with the random effect.** Disallowed for now: the per-perp
   integral would be over a product of conditionals (a composite marginal
   likelihood). A fixed propensity does not by itself make co-offenders turn

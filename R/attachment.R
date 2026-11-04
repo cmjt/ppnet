@@ -18,6 +18,15 @@
 #'     with multiplicity, \eqn{\sum_j (n_j - 1)} (`paths`).
 #' }
 #' Both count only events at most `coffender_window` before \eqn{t_k}.
+#'
+#' Records of one episode (a spree, or one incident logged as several
+#' events) can sit minutes apart. An episode gap \eqn{h} (`episode_gap`)
+#' separates continuing an episode from coming back on a separate occasion:
+#' `recent = TRUE` adds \eqn{e^{\theta_r r_v}} with \eqn{r_v = h(\cdot)} of
+#' the number of \eqn{v}'s own events at most \eqn{h} before \eqn{t_k}
+#' (`theta_recent`), and with `cycles` the 4-cycles below are split into those
+#' through a shared event at most \eqn{h} before (`theta_cycles_short`) and
+#' those more than \eqn{h} before (`theta_cycles`).
 #' These depend only on \eqn{v}'s own history, so joins stay independent
 #' given the past. It joins
 #' independently with probability
@@ -62,9 +71,13 @@
 #' co-offenders turning up together. Each old perp is scored by its
 #' conditional given the others at the event,
 #' \deqn{\mathrm{logit}\, P(v \text{ joins} \mid \text{rest}) =
-#'   \log(e^{q_v} - 1) + \theta_c z_{vk}, \qquad q_v = m w_v / W,}
+#'   \log(e^{q_v} - 1) + \theta_c z_{vk} + \theta_{cs} z^{s}_{vk},
+#'   \qquad q_v = m w_v / W,}
+#' where \eqn{z^s_{vk}} counts the 4-cycles through shared events within the
+#' episode gap (only with `episode_gap > 0`; \eqn{z_{vk}} then counts the
+#' rest),
 #' the full conditionals of an autologistic model for each event, so the
-#' fit maximises a pseudo-likelihood. At \eqn{\theta_c = 0} (`theta_cycles`)
+#' fit maximises a pseudo-likelihood. With the 4-cycle coefficients at 0
 #' this is the model above exactly. A pseudo-likelihood is not a likelihood:
 #' standard errors from its Hessian are wrong (typically too small), so use
 #' [attachment_vcov()], and likelihood-ratio tests and AIC do not apply to
@@ -88,7 +101,13 @@
 #' @param paths Logical; include \eqn{e^{\theta_p y_v}} (3-paths, i.e.
 #'   co-offenders with multiplicity).
 #' @param cycles Logical; let joins depend on past co-offenders at the same
-#'   event through 4-cycles (`theta_cycles`), fitted by pseudo-likelihood.
+#'   event through 4-cycles (`theta_cycles`, and `theta_cycles_short` with an
+#'   `episode_gap`), fitted by pseudo-likelihood.
+#' @param episode_gap The episode gap \eqn{h}: shared events at most this long
+#'   before count as the same episode. `0` (the default) for none. Must be
+#'   less than `coffender_window`.
+#' @param recent Logical; include \eqn{e^{\theta_r r_v}}, the perp's own
+#'   events within `episode_gap` (`theta_recent`). Needs `episode_gap > 0`.
 #' @param new_perps Distribution of the new-perp count: `"poisson"` (default)
 #'   or `"negbin"`.
 #' @param min_perps `0` (default) allows events with no perps; `1` requires at
@@ -103,6 +122,7 @@
 attachment_spec <- function(degree = TRUE, coffenders = FALSE,
                             coffender_scale = c("log1p", "linear"),
                             coffender_window = Inf, paths = FALSE, cycles = FALSE,
+                            episode_gap = 0, recent = FALSE,
                             new_perps = c("poisson", "negbin"), min_perps = 0,
                             random_effect = FALSE, random_effect_nodes = 8L) {
   coffender_scale <- match.arg(coffender_scale)
@@ -111,13 +131,21 @@ attachment_spec <- function(degree = TRUE, coffenders = FALSE,
     stop("`min_perps` must be 0 or 1.", call. = FALSE)
   }
   stopifnot(is.numeric(coffender_window), length(coffender_window) == 1L, coffender_window >= 0)
+  stopifnot(is.numeric(episode_gap), length(episode_gap) == 1L, episode_gap >= 0)
+  if (episode_gap > 0 && episode_gap >= coffender_window) {
+    stop("`episode_gap` must be less than `coffender_window`.", call. = FALSE)
+  }
+  if (isTRUE(recent) && !(episode_gap > 0)) {
+    stop("`recent` needs `episode_gap > 0`.", call. = FALSE)
+  }
   if (isTRUE(cycles) && isTRUE(random_effect)) {
     stop("`cycles` cannot be combined with `random_effect`.", call. = FALSE)
   }
   structure(
     list(degree = isTRUE(degree), coffenders = isTRUE(coffenders),
          coffender_scale = coffender_scale, coffender_window = coffender_window,
-         paths = isTRUE(paths), cycles = isTRUE(cycles), new_perps = new_perps, min_perps = as.integer(min_perps),
+         paths = isTRUE(paths), cycles = isTRUE(cycles), episode_gap = episode_gap,
+         recent = isTRUE(recent), new_perps = new_perps, min_perps = as.integer(min_perps),
          random_effect = isTRUE(random_effect), random_effect_nodes = as.integer(random_effect_nodes)),
     class = "attachment_spec"
   )
@@ -132,7 +160,7 @@ attachment_param_names <- function(spec) {
   if (is.null(spec)) return(character(0))
   c("m", "beta_edges", if (spec$degree) "delta", .attach_theta_names(spec), "lambda_new",
     if (spec$min_perps == 1L) "lambda_new0", if (spec$new_perps == "negbin") "size_new",
-    if (isTRUE(spec$random_effect)) "random_effect_var", if (isTRUE(spec$cycles)) "theta_cycles")
+    if (isTRUE(spec$random_effect)) "random_effect_var", .attach_cycle_names(spec))
 }
 
 # Internal: log-likelihood of the new-perp counts given the old-perp counts,
@@ -192,15 +220,24 @@ attachment_param_names <- function(spec) {
   if (spec$coffender_scale == "log1p") log1p(n) else as.numeric(n)
 }
 
-# Internal: names of the change-statistic coefficients, in column order.
+# Internal: names of the own-history change-statistic coefficients, in
+# column order.
 .attach_theta_names <- function(spec) {
-  c(if (spec$coffenders) "theta", if (isTRUE(spec$paths)) "theta_paths")
+  c(if (spec$coffenders) "theta", if (isTRUE(spec$paths)) "theta_paths",
+    if (isTRUE(spec$recent)) "theta_recent")
+}
+
+# Internal: names of the 4-cycle coefficients, in column order.
+.attach_cycle_names <- function(spec) {
+  if (!isTRUE(spec$cycles)) return(character(0))
+  c("theta_cycles", if ((spec$episode_gap %||% 0) > 0) "theta_cycles_short")
 }
 
 # Internal: the change statistics for each state snapshot, one column per
 # coefficient in .attach_theta_names().
 .attach_features <- function(spec, h) {
-  cols <- list(theta = h$upd_x, theta_paths = h$upd_y)[.attach_theta_names(spec)]
+  cols <- list(theta = h$upd_x, theta_paths = h$upd_y,
+               theta_recent = h$upd_r)[.attach_theta_names(spec)]
   X <- matrix(vapply(cols, function(n) .coffender_feature(spec, n), numeric(length(h$upd_x))),
               nrow = length(h$upd_x))
   colnames(X) <- names(cols)
@@ -217,8 +254,14 @@ compile_logpmf_attach <- function(events, spec) {
   cycles <- isTRUE(spec$cycles)
   h <- if (invalid) NULL else attach_history_cpp(a$t, a$node_ptr, a$edge_ptr, a$edge_i, a$edge_j,
                                                  f$focal, length(a$ids), spec$coffender_window,
-                                                 cycles)
-  cyc_z <- if (cycles && !invalid) .coffender_feature(spec, h$cyc_z) else numeric(0)
+                                                 cycles, spec$episode_gap %||% 0)
+  cyc_names <- .attach_cycle_names(spec)
+  cyc_z <- if (cycles && !invalid) {
+    cbind(theta_cycles = .coffender_feature(spec, h$cyc_z),
+          theta_cycles_short = .coffender_feature(spec, h$cyc_zs))[, cyc_names, drop = FALSE]
+  } else {
+    matrix(0, 0, 0)
+  }
   no_cyc <- integer(0)
   th_names <- .attach_theta_names(spec)
   feat <- if (invalid) NULL else .attach_features(spec, h)
@@ -238,13 +281,13 @@ compile_logpmf_attach <- function(events, spec) {
     lambda_new0 <- if (spec$min_perps == 1L) get("lambda_new0", NA_real_) else 1
     size_new <- if (spec$new_perps == "negbin") get("size_new", NA_real_) else 1
     random_effect_var <- if (isTRUE(spec$random_effect)) get("random_effect_var", NA_real_) else 0
-    theta_c <- if (cycles) get("theta_cycles", NA_real_) else 0
+    theta_c <- vapply(cyc_names, get, numeric(1), default = NA_real_)
 
     ok <- function(x) is.numeric(x) && length(x) == 1L && is.finite(x)
     if (!ok(m) || m <= 0 || !ok(beta_edges) || beta_edges < 0 || !ok(lambda_new) || lambda_new < 0 ||
         !ok(delta) || delta < 0 || !all(is.finite(theta)) ||
         !ok(lambda_new0) || lambda_new0 < 0 || !ok(size_new) || size_new <= 0 ||
-        !ok(random_effect_var) || random_effect_var < 0 || !ok(theta_c)) return(-Inf)
+        !ok(random_effect_var) || random_effect_var < 0 || !all(is.finite(theta_c))) return(-Inf)
     if (invalid) return(-Inf)
 
     out <- attach_ll_cpp(a$t, h$upd_ptr, h$upd_node, h$upd_deg, h$upd_last, feat,
@@ -257,7 +300,7 @@ compile_logpmf_attach <- function(events, spec) {
     ll <- as.numeric(counts) + r[1L]
     keep <- attachment_param_names(spec)
     P <- length(th_names)
-    walk_names <- c("m", "beta_edges", "delta", th_names, "random_effect_var", "theta_cycles")
+    walk_names <- c("m", "beta_edges", "delta", th_names, "random_effect_var", cyc_names)
     if (gradient && is.finite(ll)) {
       g <- c(stats::setNames(r[-1L], walk_names), attr(counts, "gradient"))
       attr(ll, "gradient") <- g[intersect(keep, names(g))]
@@ -294,7 +337,7 @@ compile_logpmf_attach <- function(events, spec) {
         random_effect_shape <- if (fv > 0) 1 / fv else Inf
       }
       sim <<- attach_sim_new(params, spec$degree, spec$coffenders, isTRUE(spec$paths),
-                             isTRUE(spec$cycles),
+                             isTRUE(spec$cycles), isTRUE(spec$recent), spec$episode_gap %||% 0,
                              spec$coffender_scale == "log1p", spec$coffender_window,
                              spec$new_perps == "negbin", spec$min_perps == 1L,
                              random_effect_shape, t_k)

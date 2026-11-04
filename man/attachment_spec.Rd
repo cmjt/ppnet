@@ -11,6 +11,8 @@ attachment_spec(
   coffender_window = Inf,
   paths = FALSE,
   cycles = FALSE,
+  episode_gap = 0,
+  recent = FALSE,
   new_perps = c("poisson", "negbin"),
   min_perps = 0,
   random_effect = FALSE,
@@ -35,7 +37,15 @@ co-offenders).}
 co-offenders with multiplicity).}
 
 \item{cycles}{Logical; let joins depend on past co-offenders at the same
-event through 4-cycles (\code{theta_cycles}), fitted by pseudo-likelihood.}
+event through 4-cycles (\code{theta_cycles}, and \code{theta_cycles_short} with an
+\code{episode_gap}), fitted by pseudo-likelihood.}
+
+\item{episode_gap}{The episode gap \eqn{h}: shared events at most this long
+before count as the same episode. \code{0} (the default) for none. Must be
+less than \code{coffender_window}.}
+
+\item{recent}{Logical; include \eqn{e^{\theta_r r_v}}, the perp's own
+events within \code{episode_gap} (\code{theta_recent}). Needs \code{episode_gap > 0}.}
 
 \item{new_perps}{Distribution of the new-perp count: \code{"poisson"} (default)
 or \code{"negbin"}.}
@@ -69,14 +79,23 @@ shared an event with (\code{coffenders});
 with multiplicity, \eqn{\sum_j (n_j - 1)} (\code{paths}).
 }
 Both count only events at most \code{coffender_window} before \eqn{t_k}.
+}
+\details{
+Records of one episode (a spree, or one incident logged as several
+events) can sit minutes apart. An episode gap \eqn{h} (\code{episode_gap})
+separates continuing an episode from coming back on a separate occasion:
+\code{recent = TRUE} adds \eqn{e^{\theta_r r_v}} with \eqn{r_v = h(\cdot)} of
+the number of \eqn{v}'s own events at most \eqn{h} before \eqn{t_k}
+(\code{theta_recent}), and with \code{cycles} the 4-cycles below are split into those
+through a shared event at most \eqn{h} before (\code{theta_cycles_short}) and
+those more than \eqn{h} before (\code{theta_cycles}).
 These depend only on \eqn{v}'s own history, so joins stay independent
 given the past. It joins
 independently with probability
 \deqn{p_v = 1 - \exp(-m\, w_v / W), \qquad W = \textstyle\sum_u w_u,}
 so \code{m} is close to the expected number of returning perps per event when
 the \eqn{p_v} are small.
-}
-\details{
+
 The number of new perps is modelled given how many old perps joined, so
 the mark likelihood factorises as \eqn{p(\text{old})\, p(\text{new} \mid
 \text{old})}. With \code{min_perps = 0} it is \code{new_perps}(\code{lambda_new}) at every
@@ -114,9 +133,13 @@ other old perp \eqn{u} at event \eqn{k} and earlier event \eqn{j} (within
 co-offenders turning up together. Each old perp is scored by its
 conditional given the others at the event,
 \deqn{\mathrm{logit}\, P(v \text{ joins} \mid \text{rest}) =
-  \log(e^{q_v} - 1) + \theta_c z_{vk}, \qquad q_v = m w_v / W,}
+  \log(e^{q_v} - 1) + \theta_c z_{vk} + \theta_{cs} z^{s}_{vk},
+  \qquad q_v = m w_v / W,}
+where \eqn{z^s_{vk}} counts the 4-cycles through shared events within the
+episode gap (only with \code{episode_gap > 0}; \eqn{z_{vk}} then counts the
+rest),
 the full conditionals of an autologistic model for each event, so the
-fit maximises a pseudo-likelihood. At \eqn{\theta_c = 0} (\code{theta_cycles})
+fit maximises a pseudo-likelihood. With the 4-cycle coefficients at 0
 this is the model above exactly. A pseudo-likelihood is not a likelihood:
 standard errors from its Hessian are wrong (typically too small), so use
 \code{\link[=attachment_vcov]{attachment_vcov()}}, and likelihood-ratio tests and AIC do not apply to

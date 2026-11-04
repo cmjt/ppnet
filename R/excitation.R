@@ -23,6 +23,11 @@
 #'   event \eqn{i} count towards \eqn{c_i}. With the default `Inf`,
 #'   connectedness keeps growing for prolific perps as the history lengthens,
 #'   which can make a long process explosive when `gamma > 0`.
+#' @param connectedness_min_gap Only earlier events more than this long before
+#'   event \eqn{i} count towards \eqn{c_i}. Records of the same episode (e.g.
+#'   minutes apart) are then left to the kernel, typically the fast component
+#'   of `kernel = "exp2"`, instead of making an event look connected. `0` (the
+#'   default) counts all.
 #'
 #' @return An object of class `excitation_spec`.
 #' @export
@@ -31,10 +36,12 @@
 #' excitation_coef_names(excitation_spec(size = TRUE, connectedness = TRUE))
 excitation_spec <- function(size = TRUE, connectedness = FALSE,
                             connectedness_scale = c("log1p", "linear"),
-                            connectedness_window = Inf) {
+                            connectedness_window = Inf, connectedness_min_gap = 0) {
   connectedness_scale <- match.arg(connectedness_scale)
   stopifnot(is.numeric(connectedness_window), length(connectedness_window) == 1L,
-            connectedness_window >= 0)
+            connectedness_window >= 0, is.numeric(connectedness_min_gap),
+            length(connectedness_min_gap) == 1L, connectedness_min_gap >= 0,
+            connectedness_min_gap < connectedness_window)
   if (!isTRUE(size) && !isTRUE(connectedness)) {
     stop("excitation_spec() needs `size`, `connectedness` or both; use NULL for constant excitation.",
          call. = FALSE)
@@ -42,7 +49,8 @@ excitation_spec <- function(size = TRUE, connectedness = FALSE,
   structure(
     list(size = isTRUE(size), connectedness = isTRUE(connectedness),
          connectedness_scale = connectedness_scale,
-         connectedness_window = connectedness_window),
+         connectedness_window = connectedness_window,
+         connectedness_min_gap = connectedness_min_gap),
     class = "excitation_spec"
   )
 }
@@ -77,7 +85,8 @@ excitation_coef_names <- function(spec) {
 
 # Internal: the excitation design for an events object.
 .excitation_design <- function(spec, events) {
-  s <- event_summary(events, connectedness_window = spec$connectedness_window)
+  s <- event_summary(events, connectedness_window = spec$connectedness_window,
+                     connectedness_min_gap = spec$connectedness_min_gap %||% 0)
   .excitation_z(spec, s$n_perps, s$connectedness)
 }
 

@@ -14,9 +14,10 @@
 //
 // With 4-cycles (theta_c) joins at an event are drawn from the autologistic
 // model whose full conditionals the likelihood uses,
-//   logit P(v joins | rest) = log(expm1(u_v q_v)) + theta_c h(z_v),
+//   logit P(v joins | rest) = log(expm1(u_v q_v)) + theta_c h(z_v) + theta_cs h(zs_v),
 // with z_v the shared events (within the window) of v with the other old
-// joiners: by Gibbs sampling, starting from the independent draw and
+// joiners, split with an episode gap h into zs_v (shared events within h)
+// and z_v (the rest): by Gibbs sampling, starting from the independent draw and
 // sweeping over every old perp `n_sweeps` times. That costs O(n_sweeps *
 // n_perps) per event.
 
@@ -75,7 +76,11 @@ struct AttachSim {
   // parameters
   double m, beta_e, delta, theta, theta_p, window, lambda_new, lambda_new0, size_new,
     random_effect_shape;
-  double theta_c;
+  double theta_c, theta_cs, theta_r, gap;
+  bool use_recent;
+  // own events within the episode gap: r, expired from rec_queue
+  std::vector<int> r;
+  std::queue<std::pair<double, std::vector<int> > > rec_queue;
   bool use_degree, use_cof, use_paths, use_cyc, log1p_scale, negbin, min_one;
   int n_sweeps;
   // 4-cycles: per perp, partners and the times of their shared events
@@ -96,7 +101,8 @@ struct AttachSim {
 
   double weight(int v) const {
     auto h = [&](int n) { return log1p_scale ? std::log1p((double)n) : (double)n; };
-    const double eta = (use_cof ? theta * h(x[v]) : 0.0) + (use_paths ? theta_p * h(y[v]) : 0.0);
+    const double eta = (use_cof ? theta * h(x[v]) : 0.0) + (use_paths ? theta_p * h(y[v]) : 0.0) +
+      (use_recent ? theta_r * h(r[v]) : 0.0);
     return (use_degree ? deg[v] + delta : 1.0) * std::exp(eta) *
       std::exp(beta_e * (last[v] - t_ref));
   }
@@ -118,7 +124,7 @@ struct AttachSim {
 
 // [[Rcpp::export]]
 SEXP attach_sim_new(List params, bool use_degree, bool use_cof, bool use_paths, bool use_cyc,
-                    bool log1p_scale, double window, bool negbin, bool min_one,
+                    bool use_recent, double gap, bool log1p_scale, double window, bool negbin, bool min_one,
                     double random_effect_shape, double t0, int n_sweeps = 10) {
   AttachSim* sim = new AttachSim();
   auto get = [&](const char* nm, double dflt) {
@@ -130,6 +136,10 @@ SEXP attach_sim_new(List params, bool use_degree, bool use_cof, bool use_paths, 
   sim->theta = get("theta", 0.0);
   sim->theta_p = get("theta_paths", 0.0);
   sim->theta_c = get("theta_cycles", 0.0);
+  sim->theta_cs = get("theta_cycles_short", 0.0);
+  sim->theta_r = get("theta_recent", 0.0);
+  sim->use_recent = use_recent;
+  sim->gap = gap;
   sim->use_cyc = use_cyc;
   sim->n_sweeps = n_sweeps;
   sim->lambda_new = get("lambda_new", NA_REAL);
@@ -198,6 +208,14 @@ List attach_sim_step(SEXP ptr, double t) {
     }
     S.recent.pop();
   }
+  while (!S.rec_queue.empty() && S.rec_queue.front().first + S.gap < t) {
+    const std::vector<int>& pj = S.rec_queue.front().second;
+    for (size_t a = 0; a < pj.size(); ++a) {
+      --S.r[pj[a]];
+      touch(pj[a]);
+    }
+    S.rec_queue.pop();
+  }
   for (size_t a = 0; a < changed.size(); ++a) S.update(changed[a]);
 
   // Old perps: Poisson(m sum u w / W) hits spread in proportion to u w.
@@ -219,7 +237,7 @@ List attach_sim_step(SEXP ptr, double t) {
   if (S.use_cyc && n_old > 0) {
     const double W0 = S.s0.total(), cut = t - S.window;
     std::vector<char> in(n_old, 0);
-    std::vector<double> z(n_old, 0.0);
+    std::vector<double> z(n_old, 0.0), zs(n_old, 0.0);
     // Shared events of u with each partner within the window (pruned).
     auto toggle = [&](int u, double sign) {
       for (auto it = S.shared[u].begin(); it != S.shared[u].end();) {
@@ -231,7 +249,14 @@ List attach_sim_step(SEXP ptr, double t) {
           it = S.shared[u].erase(it);
           continue;
         }
-        if (it->first < n_old) z[it->first] += sign * (double)tt.size();
+        if (it->first < n_old) {
+          int n_short = 0;
+          if (S.gap > 0.0) {
+            for (size_t b = tt.size(); b > 0 && t - tt[b - 1] <= S.gap; --b) ++n_short;
+          }
+          zs[it->first] += sign * (double)n_short;
+          z[it->first] += sign * (double)(tt.size() - n_short);
+        }
         ++it;
       }
     };
@@ -243,7 +268,7 @@ List attach_sim_step(SEXP ptr, double t) {
     for (int sweep = 0; sweep < S.n_sweeps; ++sweep) {
       for (int v = 0; v < n_old; ++v) {
         const double q = S.u[v] * S.m * S.s0.value[v] / W0;
-        const double x = std::log(std::expm1(q)) + S.theta_c * h(z[v]);
+        const double x = std::log(std::expm1(q)) + S.theta_c * h(z[v]) + S.theta_cs * h(zs[v]);
         const bool y = R::unif_rand() < 1.0 / (1.0 + std::exp(-x));
         if (y != (bool)in[v]) {
           in[v] = y;
@@ -265,6 +290,7 @@ List attach_sim_step(SEXP ptr, double t) {
     S.deg.push_back(0);
     S.x.push_back(0);
     S.y.push_back(0);
+    S.r.push_back(0);
     S.stamp.push_back(-1);
     if (S.use_cyc) S.shared.emplace_back();
     S.s.push(0.0);
@@ -280,6 +306,7 @@ List attach_sim_step(SEXP ptr, double t) {
     const int v = perps[a];
     ++S.deg[v];
     S.y[v] += (int)perps.size() - 1;
+    if (S.gap > 0.0) ++S.r[v];
     S.last[v] = t;
     touch(v);
     for (size_t b = a + 1; b < perps.size(); ++b) {
@@ -295,6 +322,7 @@ List attach_sim_step(SEXP ptr, double t) {
     }
   }
   if (std::isfinite(S.window) && perps.size() > 1) S.recent.push(std::make_pair(t, perps));
+  if (S.gap > 0.0 && !perps.empty()) S.rec_queue.push(std::make_pair(t, perps));
   if (S.use_cyc) {
     for (size_t a = 0; a < perps.size(); ++a) {
       for (size_t b = a + 1; b < perps.size(); ++b) {

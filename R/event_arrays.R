@@ -130,22 +130,26 @@ compile_logpmf_ba_array <- function(events, delta = 0.001, eps = 1e-12) {
 #'   produced for `mark_type = "ba_bip"` or `"cs_bip"`.
 #' @param connectedness_window Only earlier events at most this long before
 #'   an event count towards its connectedness. `Inf` (the default) counts all.
+#' @param connectedness_min_gap Only earlier events more than this long before
+#'   an event count, e.g. to leave out records from the same episode. `0`
+#'   (the default) counts all.
 #'
 #' @return A data.frame with one row per event: `event_id`, `t`, `n_perps`
 #'   (perps joined to the event), `n_new` and `n_old` (perps first seen at this
 #'   event, or earlier), and `connectedness`, the number of distinct earlier
-#'   events (within `connectedness_window`) that share at least one perp with
-#'   this one.
+#'   events (within `connectedness_window`, beyond `connectedness_min_gap`)
+#'   that share at least one perp with this one.
 #' @export
-event_summary <- function(events, connectedness_window = Inf) {
+event_summary <- function(events, connectedness_window = Inf, connectedness_min_gap = 0) {
   stopifnot(is.numeric(connectedness_window), length(connectedness_window) == 1L,
-            connectedness_window >= 0)
+            connectedness_window >= 0, is.numeric(connectedness_min_gap),
+            length(connectedness_min_gap) == 1L, connectedness_min_gap >= 0)
   a <- .event_arrays(events)
   if (all(is.na(a$role))) stop("event_summary() needs node roles 'event' and 'perp'.", call. = FALSE)
   f <- .bip_focal(a)
   if (any(f$focal < 0L)) stop("Every event needs exactly one event node.", call. = FALSE)
 
   s <- event_summary_cpp(a$t, a$node_ptr, a$edge_ptr, a$edge_i, a$edge_j, f$focal,
-                         length(a$ids), connectedness_window)
+                         length(a$ids), connectedness_window, connectedness_min_gap)
   data.frame(event_id = events$times$event_id, t = a$t, s)
 }

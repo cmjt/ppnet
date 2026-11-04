@@ -36,21 +36,32 @@ using namespace Rcpp;
 // k and event j within `window` that u and v both attended. These are the
 // past co-offenders of the old perps at k (cyc_node, cyc_z, and cyc_y = 1 if
 // v joined); every other old perp has z = 0.
+//
+// With gap > 0 (the episode gap h), r counts v's own events no more than h
+// before (recent attendance), and the 4-cycles are split by how long ago the
+// shared event j was: cyc_zs counts those within h (the same episode) and
+// cyc_z those more than h and up to `window` before (a separate occasion).
 // [[Rcpp::export]]
 List attach_history_cpp(NumericVector t, IntegerVector node_ptr,
                         IntegerVector edge_ptr, IntegerVector edge_i,
                         IntegerVector edge_j, IntegerVector focal,
-                        int n_nodes, double window, bool cycles = false) {
+                        int n_nodes, double window, bool cycles = false,
+                        double gap = 0.0) {
   const int n_ev = t.size();
   std::vector<int> born(n_nodes, -1), deg(n_nodes, 0), x(n_nodes, 0), y(n_nodes, 0),
     stamp(n_nodes, -1);
   std::vector<double> last(n_nodes, 0.0);
 
-  std::vector<int> upd_idx, upd_node, upd_deg, upd_x, upd_y, obs_idx, obs_node;
+  std::vector<int> upd_idx, upd_node, upd_deg, upd_x, upd_y, upd_r, obs_idx, obs_node;
+  // Recent attendance: each perp's own events within the episode gap.
+  const bool use_gap = gap > 0.0;
+  std::vector<int> r(n_nodes, 0);
+  std::vector<std::vector<int> > rec_perps(use_gap ? n_ev : 0);
+  std::queue<int> rec_queue;
   // 4-cycles: per perp, its partners and the times of their shared events.
   std::vector<std::unordered_map<int, std::vector<double> > > shared(cycles ? n_nodes : 0);
-  std::vector<int> cyc_idx, cyc_node, cyc_z, cyc_y, zc(cycles ? n_nodes : 0, 0),
-    joined_now(cycles ? n_nodes : 0, 0);
+  std::vector<int> cyc_idx, cyc_node, cyc_z, cyc_zs, cyc_y, zc(cycles ? n_nodes : 0, 0),
+    zs(cycles ? n_nodes : 0, 0), joined_now(cycles ? n_nodes : 0, 0);
   std::vector<int> zc_list;
   std::vector<double> upd_last;
 
@@ -80,6 +91,7 @@ List attach_history_cpp(NumericVector t, IntegerVector node_ptr,
       upd_last.push_back(last[v]);
       upd_x.push_back(x[v]);
       upd_y.push_back(y[v]);
+      upd_r.push_back(r[v]);
     }
     changed.clear();
     ++stamp_id;
@@ -110,6 +122,16 @@ List attach_history_cpp(NumericVector t, IntegerVector node_ptr,
       }
       ev_perps[ev_queue.front()].clear();
       ev_queue.pop();
+    }
+    // Events more than the episode gap before t_k are no longer recent.
+    while (use_gap && !rec_queue.empty() && t[rec_queue.front()] + gap < t[k]) {
+      const std::vector<int>& pj = rec_perps[rec_queue.front()];
+      for (size_t a = 0; a < pj.size(); ++a) {
+        --r[pj[a]];
+        touch(pj[a]);
+      }
+      rec_perps[rec_queue.front()].clear();
+      rec_queue.pop();
     }
     record(k);
 
@@ -145,8 +167,14 @@ List attach_history_cpp(NumericVector t, IntegerVector node_ptr,
             continue;
           }
           const int v = it->first;
-          if (zc[v] == 0) zc_list.push_back(v);
-          zc[v] += (int)tt.size();
+          if (zc[v] == 0 && zs[v] == 0) zc_list.push_back(v);
+          // Shared events within the episode gap count as short.
+          int n_short = 0;
+          if (use_gap) {
+            for (size_t b = tt.size(); b > 0 && t[k] - tt[b - 1] <= gap; --b) ++n_short;
+          }
+          zs[v] += n_short;
+          zc[v] += (int)tt.size() - n_short;
           ++it;
         }
       }
@@ -155,8 +183,10 @@ List attach_history_cpp(NumericVector t, IntegerVector node_ptr,
         cyc_idx.push_back(k);
         cyc_node.push_back(v);
         cyc_z.push_back(zc[v]);
+        cyc_zs.push_back(zs[v]);
         cyc_y.push_back(joined_now[v]);
         zc[v] = 0;
+        zs[v] = 0;
       }
       zc_list.clear();
       for (size_t a = 0; a < perps.size(); ++a) joined_now[perps[a]] = 0;
@@ -173,6 +203,7 @@ List attach_history_cpp(NumericVector t, IntegerVector node_ptr,
       const int v = perps[a];
       ++deg[v];
       y[v] += (int)perps.size() - 1;
+      if (use_gap) ++r[v];
       last[v] = t[k];
       touch(v);
       for (size_t b = a + 1; b < perps.size(); ++b) {
@@ -192,6 +223,10 @@ List attach_history_cpp(NumericVector t, IntegerVector node_ptr,
       ev_perps[k] = perps;
       ev_queue.push(k);
     }
+    if (use_gap && !perps.empty()) {
+      rec_perps[k] = perps;
+      rec_queue.push(k);
+    }
     if (k + 1 < n_ev) record(k + 1);
     else changed.clear();
   }
@@ -206,10 +241,10 @@ List attach_history_cpp(NumericVector t, IntegerVector node_ptr,
   return List::create(
     _["upd_ptr"] = ptr(upd_idx), _["upd_node"] = wrap(upd_node),
     _["upd_deg"] = wrap(upd_deg), _["upd_last"] = wrap(upd_last),
-    _["upd_x"] = wrap(upd_x), _["upd_y"] = wrap(upd_y),
+    _["upd_x"] = wrap(upd_x), _["upd_y"] = wrap(upd_y), _["upd_r"] = wrap(upd_r),
     _["obs_ptr"] = ptr(obs_idx), _["obs_node"] = wrap(obs_node),
     _["cyc_ptr"] = ptr(cyc_idx), _["cyc_node"] = wrap(cyc_node),
-    _["cyc_z"] = wrap(cyc_z), _["cyc_y"] = wrap(cyc_y)
+    _["cyc_z"] = wrap(cyc_z), _["cyc_zs"] = wrap(cyc_zs), _["cyc_y"] = wrap(cyc_y)
   );
 }
 
@@ -220,10 +255,11 @@ List attach_history_cpp(NumericVector t, IntegerVector node_ptr,
 // (d + delta) factor. gl_x and gl_w are a Gauss-Legendre rule on [-1, 1],
 // used panel by panel for the random-effect integrals.
 //
-// 4-cycles (theta_c, from the cyc_* lists of attach_history_cpp, cyc_z
-// already transformed) make joins at an event depend on each other. Each
-// old perp v is then scored by its conditional given the others at event k,
-//   logit P(v joins | rest) = log(expm1(q_v)) + theta_c z_vk,
+// 4-cycles (theta_c, from the cyc_* lists of attach_history_cpp; cyc_z has
+// one column per element of theta_c, already transformed) make joins at an
+// event depend on each other. Each old perp v is then scored by its
+// conditional given the others at event k,
+//   logit P(v joins | rest) = log(expm1(q_v)) + theta_c' z_vk,
 // the full conditionals of a per-event autologistic model, so this is a
 // pseudo-likelihood; at theta_c = 0 it is the likelihood above. Perps with
 // z_vk = 0 keep their independent terms, so only the cyc_* entries change.
@@ -231,7 +267,7 @@ List attach_history_cpp(NumericVector t, IntegerVector node_ptr,
 // a row of `scores`, for sandwich standard errors.
 //
 // Returns value = (ll, d/dm, d/dbeta, d/ddelta, d/dtheta_1..P,
-// d/drandom_effect_var, d/dtheta_c).
+// d/drandom_effect_var, d/dtheta_c_1..C).
 // [[Rcpp::export]]
 List attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
                             IntegerVector upd_node, IntegerVector upd_deg,
@@ -241,13 +277,15 @@ List attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
                             NumericVector theta, bool use_degree, double random_effect_var,
                             NumericVector gl_x, NumericVector gl_w,
                             IntegerVector cyc_ptr, IntegerVector cyc_node,
-                            NumericVector cyc_z, IntegerVector cyc_y, double theta_c,
+                            NumericMatrix cyc_z, IntegerVector cyc_y, NumericVector theta_c,
                             bool per_event) {
   const int n_ev = t.size();
   const int P = theta.size();
-  const int NG = 5 + P;  // gradient entries
+  const int C = theta_c.size();
+  const int NG = 4 + P + C;  // gradient entries
   if (upd_feat.ncol() != P) stop("upd_feat needs one column per theta.");
-  const bool has_cyc = cyc_ptr.size() == n_ev + 1;
+  const bool has_cyc = cyc_ptr.size() == n_ev + 1 && C > 0;
+  if (has_cyc && cyc_z.ncol() != C) stop("cyc_z needs one column per theta_c.");
   NumericVector fail_v(NG + 1, NA_REAL);
   fail_v[0] = R_NegInf;
   const List fail = List::create(_["value"] = fail_v, _["scores"] = R_NilValue);
@@ -315,7 +353,8 @@ List attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
     seg_dd.push_back(dd[v]);
   };
 
-  double ll = 0.0, g_m = 0.0, g_beta = 0.0, g_delta = 0.0, g_fv = 0.0, g_c = 0.0;
+  double ll = 0.0, g_m = 0.0, g_beta = 0.0, g_delta = 0.0, g_fv = 0.0;
+  std::vector<double> g_c(C, 0.0);
   std::vector<double> g_theta(P, 0.0);
   // Per-event scores: the change in each gradient entry over event k.
   NumericMatrix scores(per_event ? n_ev : 0, per_event ? NG : 0);
@@ -323,7 +362,8 @@ List attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
   auto grad_now = [&](std::vector<double>& g) {
     g[0] = g_m; g[1] = g_beta; g[2] = g_delta;
     for (int j = 0; j < P; ++j) g[3 + j] = g_theta[j];
-    g[3 + P] = g_fv; g[4 + P] = g_c;
+    g[3 + P] = g_fv;
+    for (int j = 0; j < C; ++j) g[4 + P + j] = g_c[j];
   };
   std::vector<double> gcur(NG, 0.0);
   auto log1pexp = [](double x) { return x > 0 ? x + std::log1p(std::exp(-x)) : std::log1p(std::exp(x)); };
@@ -418,12 +458,14 @@ List attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
         const double a = tc - last[v];
         const double q = m * c[v] * std::exp(-beta * a) / W;
         if (!(q > 0.0) || !std::isfinite(q)) return fail;
-        const double eta = std::log(std::expm1(q)), x = eta + theta_c * cyc_z[o];
+        const double eta = std::log(std::expm1(q));
+        double x = eta;
+        for (int j = 0; j < C; ++j) x += theta_c[j] * cyc_z(o, j);
         const double cond = y ? -log1pexp(-x) : -log1pexp(x);
         const double indep = y ? eta - q : -q;
         ll += cond - indep;
         const double sig = 1.0 / (1.0 + std::exp(-x));
-        g_c += ((y ? 1.0 : 0.0) - sig) * cyc_z[o];
+        for (int j = 0; j < C; ++j) g_c[j] += ((y ? 1.0 : 0.0) - sig) * cyc_z(o, j);
         // d(cond - indep) / d log q
         const double dq = q * (((y ? 1.0 : 0.0) - sig) / (-std::expm1(-q)) -
                                (y ? 1.0 / std::expm1(q) : -1.0));

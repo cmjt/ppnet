@@ -99,12 +99,14 @@ NumericVector mark_ll_attach_cpp(NumericVector t, IntegerVector node_ptr,
 
 // Per-event summaries for a bipartite event-perp history: the event's perps
 // are the neighbours of focal[k] (its event node) among edges of event k.
-// connectedness is the number of distinct earlier events, no more than
-// `window` before event k, that share at least one perp with it.
+// connectedness is the number of distinct earlier events, more than
+// `min_gap` and no more than `window` before event k, that share at least one
+// perp with it.
 // [[Rcpp::export]]
 DataFrame event_summary_cpp(NumericVector t, IntegerVector node_ptr, IntegerVector edge_ptr,
                             IntegerVector edge_i, IntegerVector edge_j,
-                            IntegerVector focal, int n_nodes, double window) {
+                            IntegerVector focal, int n_nodes, double window,
+                            double min_gap = 0.0) {
   const int n_ev = focal.size();
 
   std::vector<int> born(n_nodes, -1), seen(n_ev, -1);
@@ -126,7 +128,8 @@ DataFrame event_summary_cpp(NumericVector t, IntegerVector node_ptr, IntegerVect
       if (born[v] < k) ++old;
       const std::vector<int>& h = history[v];
       for (size_t b = 0; b < h.size(); ++b) {
-        if (seen[h[b]] != k && t[k] - t[h[b]] <= window) {
+        const double gap = t[k] - t[h[b]];
+        if (seen[h[b]] != k && gap <= window && gap > min_gap) {
           seen[h[b]] = k;
           ++linked;
         }

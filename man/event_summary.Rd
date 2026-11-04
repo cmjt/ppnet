@@ -4,7 +4,7 @@
 \alias{event_summary}
 \title{Per-event summaries of a bipartite event-perp history}
 \usage{
-event_summary(events, connectedness_window = Inf)
+event_summary(events, connectedness_window = Inf, connectedness_min_gap = 0)
 }
 \arguments{
 \item{events}{An events object with node roles \code{"event"} and \code{"perp"}, as
@@ -12,13 +12,17 @@ produced for \code{mark_type = "ba_bip"} or \code{"cs_bip"}.}
 
 \item{connectedness_window}{Only earlier events at most this long before
 an event count towards its connectedness. \code{Inf} (the default) counts all.}
+
+\item{connectedness_min_gap}{Only earlier events more than this long before
+an event count, e.g. to leave out records from the same episode. \code{0}
+(the default) counts all.}
 }
 \value{
 A data.frame with one row per event: \code{event_id}, \code{t}, \code{n_perps}
 (perps joined to the event), \code{n_new} and \code{n_old} (perps first seen at this
 event, or earlier), and \code{connectedness}, the number of distinct earlier
-events (within \code{connectedness_window}) that share at least one perp with
-this one.
+events (within \code{connectedness_window}, beyond \code{connectedness_min_gap})
+that share at least one perp with this one.
 }
 \description{
 Walks the events in time order and records, for each event, quantities that

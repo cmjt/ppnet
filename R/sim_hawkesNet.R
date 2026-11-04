@@ -219,7 +219,9 @@ sim_hawkesNet <- function(
         ej <- as.character(edges_k$j)
         perps <- unique(c(ej[ei == event_id], ei[ej == event_id]))
         past <- unique(unlist(mget(perps, envir = perp_history, ifnotfound = list(integer(0)))))
-        past <- past[t_prop - events_t[past] <= excitation$connectedness_window]
+        gap <- t_prop - events_t[past]
+        past <- past[gap <= excitation$connectedness_window &
+                       gap > (excitation$connectedness_min_gap %||% 0)]
         z_k <- .excitation_z(excitation, length(perps), length(past))
         g_k <- exp(sum(z_k * a_exc))
         k <- n_events + 1L

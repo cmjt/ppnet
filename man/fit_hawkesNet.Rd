@@ -59,7 +59,7 @@ default to the \code{"none"} transform.}
 \item{excitation}{Optional \code{\link[=excitation_spec]{excitation_spec()}}; its coefficients (\code{alpha},
 \code{gamma}) must be in \code{params_init} and default to the \code{"none"} transform.}
 
-\item{attachment}{Optional \code{\link[=attachment_spec]{attachment_spec()}}; \code{theta}, \code{theta_paths} and \code{theta_cycles} default to the
+\item{attachment}{Optional \code{\link[=attachment_spec]{attachment_spec()}}; \code{theta}, \code{theta_paths}, \code{theta_recent} and the 4-cycle coefficients default to the
 \code{"none"} transform, the other attachment parameters to \code{"log"}.}
 
 \item{kernel}{\code{"exp"} or \code{"exp2"}; see \code{\link[=loglik]{loglik()}}. With \code{"exp2"},

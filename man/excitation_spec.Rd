@@ -8,7 +8,8 @@ excitation_spec(
   size = TRUE,
   connectedness = FALSE,
   connectedness_scale = c("log1p", "linear"),
-  connectedness_window = Inf
+  connectedness_window = Inf,
+  connectedness_min_gap = 0
 )
 }
 \arguments{
@@ -24,6 +25,12 @@ scale keeps heavily connected events from dominating the fit.}
 event \eqn{i} count towards \eqn{c_i}. With the default \code{Inf},
 connectedness keeps growing for prolific perps as the history lengthens,
 which can make a long process explosive when \code{gamma > 0}.}
+
+\item{connectedness_min_gap}{Only earlier events more than this long before
+event \eqn{i} count towards \eqn{c_i}. Records of the same episode (e.g.
+minutes apart) are then left to the kernel, typically the fast component
+of \code{kernel = "exp2"}, instead of making an event look connected. \code{0} (the
+default) counts all.}
 }
 \value{
 An object of class \code{excitation_spec}.

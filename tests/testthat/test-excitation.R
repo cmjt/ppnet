@@ -1,7 +1,7 @@
 # The excitation weights are recomputed from the raw edge lists, without
 # event_summary(), so the likelihood and its design are checked independently.
 
-brute_excitation_ll <- function(ev, p, T_end, window = Inf, scale = "log1p") {
+brute_excitation_ll <- function(ev, p, T_end, window = Inf, scale = "log1p", min_gap = 0) {
   arrivals <- nodes_by_event(ev)
   edges <- edges_by_event(ev)
   t <- ev$times$t
@@ -10,7 +10,7 @@ brute_excitation_ll <- function(ev, p, T_end, window = Inf, scale = "log1p") {
   })
   conn <- vapply(seq_along(t), function(k) {
     sum(vapply(seq_len(k - 1L), function(m) {
-      any(perps[[m]] %in% perps[[k]]) && t[k] - t[m] <= window
+      any(perps[[m]] %in% perps[[k]]) && t[k] - t[m] <= window && t[k] - t[m] > min_gap
     }, logical(1)))
   }, numeric(1))
   h <- if (scale == "log1p") log1p(conn) else conn
@@ -52,6 +52,21 @@ test_that("excitation loglik matches a brute-force calculation", {
                tolerance = 1e-8)
 })
 
+test_that("connectedness_min_gap leaves out recent events in the likelihood", {
+  local_min_one_perp()
+  set.seed(63)
+  ev <- sim_hawkesNet(p_exc, T_end = 15, mark_type = "ba_bip", excitation = exc)$ev
+  skip_if(nrow(ev$times) < 5L)
+  mark <- mark_part(ev, p_exc, 15)
+  gapped <- excitation_spec(size = TRUE, connectedness = TRUE, connectedness_window = 4,
+                            connectedness_min_gap = 0.5)
+  expect_equal(loglik(ev, p_exc, mark_type = "ba_bip", T_end = 15, excitation = gapped),
+               brute_excitation_ll(ev, p_exc, 15, window = 4, min_gap = 0.5) + mark,
+               tolerance = 1e-8)
+  expect_error(excitation_spec(connectedness = TRUE, connectedness_window = 1,
+                               connectedness_min_gap = 1))
+})
+
 test_that("zero excitation coefficients give the plain Hawkes model", {
   local_min_one_perp()
   set.seed(62)
@@ -75,6 +90,11 @@ test_that("event_summary applies the connectedness window", {
   )
   expect_equal(event_summary(ev, connectedness_window = 1)$connectedness, c(0, 1, 1, 1, 0))
   expect_equal(event_summary(ev, connectedness_window = 0.5)$connectedness, rep(0, 5))
+  # A minimum gap of 1 drops links to the event just before, keeping 3 -> 1.
+  expect_equal(event_summary(ev, connectedness_window = 2, connectedness_min_gap = 1)$connectedness,
+               c(0, 0, 1, 0, 0))
+  expect_equal(event_summary(ev, connectedness_min_gap = 1.5)$connectedness,
+               event_summary(ev, connectedness_window = Inf, connectedness_min_gap = 1.5)$connectedness)
 })
 
 test_that("excitation needs a bipartite history and its coefficients", {
