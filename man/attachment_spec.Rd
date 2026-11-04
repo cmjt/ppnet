@@ -16,7 +16,9 @@ attachment_spec(
 )
 }
 \arguments{
-\item{degree}{Logical; include \eqn{(d_v + \delta)}.}
+\item{degree}{Logical; include \eqn{(d_v + \delta)}. Old perps have
+\eqn{d_v \ge 1}, so \code{delta = 0} (joins proportional to past attendance)
+is allowed; fix it there with \code{fixed_params} if the fit runs to 0.}
 
 \item{coffenders}{Logical; include \eqn{e^{\theta x_v}}.}
 

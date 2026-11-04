@@ -59,6 +59,23 @@ test_that("attachment loglik matches a brute-force calculation", {
   }
 })
 
+test_that("delta = 0 is allowed: joins proportional to past attendance", {
+  set.seed(72)
+  ev <- sim_hawkesNet(p_att, T_end = 20, mark_type = "ba_bip", attachment = att)$ev
+  q <- modifyList(p_att, list(delta = 0))
+  time_ll <- brute_time_ll(ev$times$t, 1, 0.5, 1, 20)
+  expect_equal(loglik(ev, q, mark_type = "ba_bip", T_end = 20, attachment = att),
+               time_ll + brute_attach_mark_ll(ev, q, att), tolerance = 1e-8)
+  expect_equal(loglik(ev, modifyList(q, list(delta = -0.1)), mark_type = "ba_bip",
+                      T_end = 20, attachment = att), -Inf)
+  re <- attachment_spec(degree = TRUE, coffenders = TRUE, coffender_window = 3,
+                        random_effect = TRUE)
+  ll0 <- compile_logpmf_attach(ev, re)(c(q, random_effect_var = 0.5))
+  ll_eps <- compile_logpmf_attach(ev, re)(c(modifyList(q, list(delta = 1e-9)),
+                                            random_effect_var = 0.5))
+  expect_equal(ll0, ll_eps, tolerance = 1e-6)
+})
+
 test_that("running sums stay accurate over long histories", {
   # More than 512 events exercises the periodic recompute; strong recency
   # decay makes the sums span many orders of magnitude.

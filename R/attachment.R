@@ -47,7 +47,9 @@
 #' sum \eqn{W}, so its cost grows with the number of events and perp
 #' appearances, not with events times perps.
 #'
-#' @param degree Logical; include \eqn{(d_v + \delta)}.
+#' @param degree Logical; include \eqn{(d_v + \delta)}. Old perps have
+#'   \eqn{d_v \ge 1}, so `delta = 0` (joins proportional to past attendance)
+#'   is allowed; fix it there with `fixed_params` if the fit runs to 0.
 #' @param coffenders Logical; include \eqn{e^{\theta x_v}}.
 #' @param coffender_scale `"log1p"` (default) for \eqn{h(n) = \log(1 + n)} or
 #'   `"linear"` for \eqn{h(n) = n}.
@@ -158,7 +160,7 @@ compile_logpmf_attach <- function(events, spec) {
 
     ok <- function(x) is.numeric(x) && length(x) == 1L && is.finite(x)
     if (!ok(m) || m <= 0 || !ok(beta_edges) || beta_edges < 0 || !ok(lambda_new) || lambda_new < 0 ||
-        !ok(delta) || delta <= 0 && spec$degree || !ok(theta) ||
+        !ok(delta) || delta < 0 || !ok(theta) ||
         !ok(lambda_new0) || lambda_new0 < 0 || !ok(size_new) || size_new <= 0 ||
         !ok(random_effect_var) || random_effect_var < 0) return(-Inf)
     if (invalid) return(-Inf)
