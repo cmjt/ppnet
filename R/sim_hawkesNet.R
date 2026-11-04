@@ -17,11 +17,12 @@
 #' @param attachment Optional [attachment_spec()] for which old perps join
 #'   each event (`mark_type = "ba_bip"` only); its parameters go in `params`.
 #' @param kernel `"exp"` or `"exp2"`; see [loglik()].
-#' @param frailty_shape With an `attachment` spec without `frailty` only:
+#' @param random_effect_shape With an `attachment` spec without `random_effect`
+#'   only:
 #'   finite values give each perp a fixed propensity
 #'   \eqn{u \sim \text{Gamma}(\text{shape}, \text{shape})} (mean 1, variance
-#'   1 / shape) multiplying its join rate, as `frailty_var` does in a spec with
-#'   `frailty = TRUE`. The fitted model then has no such term, so this
+#'   1 / shape) multiplying its join rate, as `random_effect_var` does in a spec with
+#'   `random_effect = TRUE`. The fitted model then has no such term, so this
 #'   simulates unmodelled differences between perps, e.g. to check what the
 #'   co-offender effect picks up.
 #' @param return_net Logical; also return the final `network` object. With
@@ -45,7 +46,7 @@ sim_hawkesNet <- function(
     excitation = NULL,
     attachment = NULL,
     kernel = c("exp", "exp2"),
-    frailty_shape = Inf,
+    random_effect_shape = Inf,
     return_net = TRUE,
     ...
 ) {
@@ -107,7 +108,7 @@ sim_hawkesNet <- function(
   }
   if (!is.null(attachment)) {
     if (mark_type != "ba_bip") stop("`attachment` needs mark_type = 'ba_bip'.", call. = FALSE)
-    sim_mark_fun <- .make_sim_mark_attach(attachment, frailty_shape = frailty_shape)
+    sim_mark_fun <- .make_sim_mark_attach(attachment, random_effect_shape = random_effect_shape)
   }
 
 

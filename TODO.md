@@ -4,10 +4,10 @@
 
 - [x] **Simulation check of the co-offender effect `theta`** (`ATTACH_theta_check.R`). Simulate with
   `attachment_spec(degree = TRUE, coffenders = TRUE)`, `theta = 0` and perp
-  frailty (`sim_hawkesNet(frailty_shape = ...)`), fit the model, and record how
-  often `theta` comes out positive and significant. Repeat over a few frailty
+  random effect (`sim_hawkesNet(random_effect_shape = ...)`), fit the model, and record how
+  often `theta` comes out positive and significant. Repeat over a few random-effect
   variances, fitted to match the observed spread in attendance counts.
-  Result: with any frailty, `theta` comes out clearly positive and
+  Result: with any random effect, `theta` comes out clearly positive and
   significant in every replicate, so a positive `theta` is not evidence of a
   co-offender effect without individual effects (M4).
 - [x] **Perp-driven null for the event-level `gamma`** (`sim_perp_events()`,
@@ -37,10 +37,10 @@
 
 ## Model extensions
 
-- [x] **Individual effects (M4).** `attachment_spec(frailty = TRUE)` adds
-  `frailty_var`: each perp has `u_v ~ Gamma(1/sigma2, 1/sigma2)` and joins
+- [x] **Individual effects (M4).** `attachment_spec(random_effect = TRUE)` adds
+  `random_effect_var`: each perp has `u_v ~ Gamma(1/sigma2, 1/sigma2)` and joins
   with `1 - exp(-u_v q_vk)`, `q_vk = m w_vk / W_k`, with `W_k` from the
-  frailty-free weights. `u_v` is integrated out per perp:
+  weights without the random effect. `u_v` is integrated out per perp:
   - `Q_v = sum_k q_vk` over the events where `v` is a candidate is linear-time
     from suffix sums of `exp(-beta t_k) / W_k` within reference-time epochs
     (prefix sums lost late stretches to cancellation).
@@ -49,12 +49,12 @@
     integrand is concave), then Gauss-Legendre panels widening away from it.
   - The Poisson-hit closed form first proposed was dropped: it cannot give a
     join probability near 1, so for prolific perps it made `theta` worse
-    (1.55 against 0.22 without frailty, truth 0).
-  - `frailty_var = 0` (or below 1e-8) is the model without frailty, so it can
+    (1.55 against 0.22 without the random effect, truth 0).
+  - `random_effect_var = 0` (or below 1e-8) is the model without the random effect, so it can
     be tested by a likelihood ratio (on the boundary: halve the chi-squared(1)
-    p-value) with `fixed_params = "frailty_var"`.
-  - The simulator uses the same model (`frailty_var` in a frailty spec, or
-    `frailty_shape` for a frailty the fitted model ignores).
+    p-value) with `fixed_params = "random_effect_var"`.
+  - The simulator uses the same model (`random_effect_var` in a spec with `random_effect = TRUE`, or
+    `random_effect_shape` for a random effect the fitted model ignores).
 - [x] **Comparison tools.** `compare_fits()` for nested likelihood-ratio tests and
   AIC/BIC tables, replacing the hand-written comparisons.
 - [x] **Temporal diagnostics.** `R/diagnostics_temporal.R` still assumes a

@@ -11,8 +11,8 @@ Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
 // attach_sim_new
-SEXP attach_sim_new(List params, bool use_degree, bool use_cof, bool log1p_scale, double window, bool negbin, bool min_one, double frailty_shape, double t0);
-RcppExport SEXP _ppnet_attach_sim_new(SEXP paramsSEXP, SEXP use_degreeSEXP, SEXP use_cofSEXP, SEXP log1p_scaleSEXP, SEXP windowSEXP, SEXP negbinSEXP, SEXP min_oneSEXP, SEXP frailty_shapeSEXP, SEXP t0SEXP) {
+SEXP attach_sim_new(List params, bool use_degree, bool use_cof, bool log1p_scale, double window, bool negbin, bool min_one, double random_effect_shape, double t0);
+RcppExport SEXP _ppnet_attach_sim_new(SEXP paramsSEXP, SEXP use_degreeSEXP, SEXP use_cofSEXP, SEXP log1p_scaleSEXP, SEXP windowSEXP, SEXP negbinSEXP, SEXP min_oneSEXP, SEXP random_effect_shapeSEXP, SEXP t0SEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -23,9 +23,9 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type window(windowSEXP);
     Rcpp::traits::input_parameter< bool >::type negbin(negbinSEXP);
     Rcpp::traits::input_parameter< bool >::type min_one(min_oneSEXP);
-    Rcpp::traits::input_parameter< double >::type frailty_shape(frailty_shapeSEXP);
+    Rcpp::traits::input_parameter< double >::type random_effect_shape(random_effect_shapeSEXP);
     Rcpp::traits::input_parameter< double >::type t0(t0SEXP);
-    rcpp_result_gen = Rcpp::wrap(attach_sim_new(params, use_degree, use_cof, log1p_scale, window, negbin, min_one, frailty_shape, t0));
+    rcpp_result_gen = Rcpp::wrap(attach_sim_new(params, use_degree, use_cof, log1p_scale, window, negbin, min_one, random_effect_shape, t0));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -60,8 +60,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // attach_ll_cpp
-NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr, IntegerVector upd_node, IntegerVector upd_deg, NumericVector upd_last, NumericVector upd_feat, IntegerVector obs_ptr, IntegerVector obs_node, int n_nodes, double m, double beta, double delta, double theta, bool use_degree, double frailty_var, NumericVector gl_x, NumericVector gl_w);
-RcppExport SEXP _ppnet_attach_ll_cpp(SEXP tSEXP, SEXP upd_ptrSEXP, SEXP upd_nodeSEXP, SEXP upd_degSEXP, SEXP upd_lastSEXP, SEXP upd_featSEXP, SEXP obs_ptrSEXP, SEXP obs_nodeSEXP, SEXP n_nodesSEXP, SEXP mSEXP, SEXP betaSEXP, SEXP deltaSEXP, SEXP thetaSEXP, SEXP use_degreeSEXP, SEXP frailty_varSEXP, SEXP gl_xSEXP, SEXP gl_wSEXP) {
+NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr, IntegerVector upd_node, IntegerVector upd_deg, NumericVector upd_last, NumericVector upd_feat, IntegerVector obs_ptr, IntegerVector obs_node, int n_nodes, double m, double beta, double delta, double theta, bool use_degree, double random_effect_var, NumericVector gl_x, NumericVector gl_w);
+RcppExport SEXP _ppnet_attach_ll_cpp(SEXP tSEXP, SEXP upd_ptrSEXP, SEXP upd_nodeSEXP, SEXP upd_degSEXP, SEXP upd_lastSEXP, SEXP upd_featSEXP, SEXP obs_ptrSEXP, SEXP obs_nodeSEXP, SEXP n_nodesSEXP, SEXP mSEXP, SEXP betaSEXP, SEXP deltaSEXP, SEXP thetaSEXP, SEXP use_degreeSEXP, SEXP random_effect_varSEXP, SEXP gl_xSEXP, SEXP gl_wSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -79,10 +79,10 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type delta(deltaSEXP);
     Rcpp::traits::input_parameter< double >::type theta(thetaSEXP);
     Rcpp::traits::input_parameter< bool >::type use_degree(use_degreeSEXP);
-    Rcpp::traits::input_parameter< double >::type frailty_var(frailty_varSEXP);
+    Rcpp::traits::input_parameter< double >::type random_effect_var(random_effect_varSEXP);
     Rcpp::traits::input_parameter< NumericVector >::type gl_x(gl_xSEXP);
     Rcpp::traits::input_parameter< NumericVector >::type gl_w(gl_wSEXP);
-    rcpp_result_gen = Rcpp::wrap(attach_ll_cpp(t, upd_ptr, upd_node, upd_deg, upd_last, upd_feat, obs_ptr, obs_node, n_nodes, m, beta, delta, theta, use_degree, frailty_var, gl_x, gl_w));
+    rcpp_result_gen = Rcpp::wrap(attach_ll_cpp(t, upd_ptr, upd_node, upd_deg, upd_last, upd_feat, obs_ptr, obs_node, n_nodes, m, beta, delta, theta, use_degree, random_effect_var, gl_x, gl_w));
     return rcpp_result_gen;
 END_RCPP
 }

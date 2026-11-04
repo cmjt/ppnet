@@ -64,14 +64,14 @@ test_that("fit_hawkesNet recovers the count parameters", {
   expect_true(all(abs(log(unlist(fit$par[nm])) - log(unlist(p[nm]))) < 4 * se))
 })
 
-test_that("frailty makes perps differ in how often they return", {
-  # Same expected weights, but frailty spreads attendance counts out.
+test_that("a random effect makes perps differ in how often they return", {
+  # Same expected weights, but a random effect spreads attendance counts out.
   sp <- attachment_spec(degree = FALSE)
   p <- list(mu = 4, K = 0.2, beta = 1, m = 1, beta_edges = 0.05, lambda_new = 0.7)
   attendance <- function(shape) {
     set.seed(95)
     ev <- sim_hawkesNet(p, T_end = 100, mark_type = "ba_bip", attachment = sp,
-                        frailty_shape = shape)$ev
+                        random_effect_shape = shape)$ev
     as.numeric(table(ev$edges$j))
   }
   a0 <- attendance(Inf)

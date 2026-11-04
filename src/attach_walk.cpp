@@ -11,8 +11,8 @@
 // so only W needs every perp, and W is kept as a running sum that decays
 // between events and changes only when a perp's state changes.
 //
-// With frailty_var > 0 each perp has its own u_v ~ Gamma(1 / frailty_var,
-// 1 / frailty_var) and joins with p_v = 1 - exp(-u_v q_v), where W leaves
+// With random_effect_var > 0 each perp has its own u_v ~ Gamma(1 / random_effect_var,
+// 1 / random_effect_var) and joins with p_v = 1 - exp(-u_v q_v), where W leaves
 // u out. u_v is integrated out perp by perp (see the end of attach_ll_cpp).
 
 #include <Rcpp.h>
@@ -135,23 +135,23 @@ List attach_history_cpp(NumericVector t, IntegerVector node_ptr,
 }
 
 // Attachment log-likelihood and its gradient with respect to
-// (m, beta_edges, delta, theta, frailty_var). upd_feat is the co-offender
+// (m, beta_edges, delta, theta, random_effect_var). upd_feat is the co-offender
 // feature for each snapshot (already transformed); use_degree drops the
 // (d + delta) factor. gl_x and gl_w are a Gauss-Legendre rule on [-1, 1],
-// used panel by panel for the frailty integrals.
+// used panel by panel for the random-effect integrals.
 // [[Rcpp::export]]
 NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
                             IntegerVector upd_node, IntegerVector upd_deg,
                             NumericVector upd_last, NumericVector upd_feat,
                             IntegerVector obs_ptr, IntegerVector obs_node,
                             int n_nodes, double m, double beta, double delta,
-                            double theta, bool use_degree, double frailty_var,
+                            double theta, bool use_degree, double random_effect_var,
                             NumericVector gl_x, NumericVector gl_w) {
   const int n_ev = t.size();
   const NumericVector fail =
     NumericVector::create(R_NegInf, NA_REAL, NA_REAL, NA_REAL, NA_REAL, NA_REAL);
-  // Below 1e-8 the frailty term is numerically the model without it.
-  const bool frailty = frailty_var > 1e-8;
+  // Below 1e-8 the random-effect term is numerically the model without it.
+  const bool has_re = random_effect_var > 1e-8;
 
   std::vector<char> active(n_nodes, 0);
   std::vector<double> c(n_nodes, 0.0), last(n_nodes, 0.0), feat(n_nodes, 0.0), dd(n_nodes, 0.0);
@@ -174,7 +174,7 @@ NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
     for (size_t a = 0; a < active_nodes.size(); ++a) contrib(active_nodes[a], 1.0);
   };
 
-  // Frailty: per-event quantities r_k = exp(-beta (t_k - t_ref)) / W_k and
+  // Random effect: per-event quantities r_k = exp(-beta (t_k - t_ref)) / W_k and
   // their products with the gradient terms, within epochs over which t_ref
   // is fixed. Over a stretch [s, e) of unchanged state, perp v's
   //   sum_k q_vk = m c_v exp(-beta (t_ref - last_v)) sum_{s <= k < e} r_k,
@@ -184,12 +184,12 @@ NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
   enum { R0, RD, RT, RB, RA, NR };
   std::vector<double> suf, ep_tref;
   std::vector<int> ep_of, ep_begin;
-  // Frailty: each join's perp, q and d log q / d (beta, delta, theta).
+  // Random effect: each join's perp, q and d log q / d (beta, delta, theta).
   std::vector<int> ob_v;
   std::vector<double> ob_q, ob_db, ob_dd, ob_dt;
   std::vector<int> seg_v, seg_s, seg_e, seg_start;
   std::vector<double> seg_c, seg_last, seg_feat, seg_dd;
-  if (frailty) {
+  if (has_re) {
     suf.assign((size_t)NR * n_ev, 0.0);
     ep_of.assign(n_ev, 0);
     seg_start.assign(n_nodes, 0);
@@ -218,8 +218,8 @@ NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
 
     for (int u = upd_ptr[k]; u < upd_ptr[k + 1]; ++u) {
       const int v = upd_node[u];
-      if (frailty && active[v]) close_segment(v, seg_start[v], k);
-      if (frailty) seg_start[v] = k;
+      if (has_re && active[v]) close_segment(v, seg_start[v], k);
+      if (has_re) seg_start[v] = k;
       if (active[v]) {
         contrib(v, -1.0);
       } else {
@@ -242,7 +242,7 @@ NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
     if (!std::isfinite(W) || W <= 0.0) return fail;
 
     const double Gd = Wd / W, Gt = Wt / W, Gb = -A / W;
-    if (frailty) {
+    if (has_re) {
       // The -sum_v q_vk = -m term moves into each perp's marginal below.
       if (ep_tref.empty() || beta * (tc - ep_tref.back()) > 300.0) {
         ep_tref.push_back(tc);
@@ -262,7 +262,7 @@ NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
       const double a = tc - last[v];
       const double q = m * c[v] * std::exp(-beta * a) / W;
       if (!(q > 0.0) || !std::isfinite(q)) return fail;
-      if (frailty) {
+      if (has_re) {
         ob_v.push_back(v);
         ob_q.push_back(q);
         ob_db.push_back(-a - Gb);
@@ -279,7 +279,7 @@ NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
     }
   }
 
-  if (frailty) {
+  if (has_re) {
     // Q_v = sum of q_vk over every event where v is a candidate, and its
     // derivatives, from the suffix sums.
     for (size_t i = 0; i < active_nodes.size(); ++i) {
@@ -325,7 +325,7 @@ NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
 
     // Perp v's likelihood given u is
     //   prod_{joins} (1 - exp(-u q_k)) * exp(-u Q'),  Q' = Q_v - sum_{joins} q_k,
-    // integrated against u ~ Gamma(a, a), a = 1 / frailty_var. Perps with no
+    // integrated against u ~ Gamma(a, a), a = 1 / random_effect_var. Perps with no
     // returns have the closed form a^a / (a + Q')^a. For the others, in
     // s = log u the log integrand
     //   h(s) = sum_joins log(1 - exp(-u q_k)) - u Q' - a (e^s - 1 - s)
@@ -337,7 +337,7 @@ NumericVector attach_ll_cpp(NumericVector t, IntegerVector upd_ptr,
     // split as log_prior - a (e^s - 1 - s) so that the terms of order a
     // cancel analytically; log_prior = a log a - a - lgamma(a) and
     // lpsi = log a - digamma(a) use Stirling series for large a.
-    const double a = 1.0 / frailty_var;
+    const double a = 1.0 / random_effect_var;
     double log_prior, lpsi;
     if (a >= 15.0) {
       const double a2 = a * a;

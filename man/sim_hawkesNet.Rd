@@ -18,7 +18,7 @@ sim_hawkesNet(
   excitation = NULL,
   attachment = NULL,
   kernel = c("exp", "exp2"),
-  frailty_shape = Inf,
+  random_effect_shape = Inf,
   return_net = TRUE,
   ...
 )
@@ -36,11 +36,12 @@ each event (\code{mark_type = "ba_bip"} only); its parameters go in \code{params
 
 \item{kernel}{\code{"exp"} or \code{"exp2"}; see \code{\link[=loglik]{loglik()}}.}
 
-\item{frailty_shape}{With an \code{attachment} spec without \code{frailty} only:
+\item{random_effect_shape}{With an \code{attachment} spec without \code{random_effect}
+only:
 finite values give each perp a fixed propensity
 \eqn{u \sim \text{Gamma}(\text{shape}, \text{shape})} (mean 1, variance
-1 / shape) multiplying its join rate, as \code{frailty_var} does in a spec with
-\code{frailty = TRUE}. The fitted model then has no such term, so this
+1 / shape) multiplying its join rate, as \code{random_effect_var} does in a spec with
+\code{random_effect = TRUE}. The fitted model then has no such term, so this
 simulates unmodelled differences between perps, e.g. to check what the
 co-offender effect picks up.}
 

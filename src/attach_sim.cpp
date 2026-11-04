@@ -2,8 +2,8 @@
 //
 // Stateful simulator of attachment marks (see R/attachment.R). Old perps join
 // an event independently with p_v = 1 - exp(-u_v m w_v / W), where u_v is the
-// perp's frailty (1 without frailty) and W = sum of w over old perps, without
-// frailty. Equivalently, draw H ~ Poisson(m sum_v u_v w_v / W) hits and give
+// perp's random effect (1 without one) and W = sum of w over old perps, without
+// the random effect. Equivalently, draw H ~ Poisson(m sum_v u_v w_v / W) hits and give
 // each hit to perp v with probability u_v w_v / sum_u u_u w_u; a perp joins
 // if it gets at least one hit. The decay exp(-beta_e t) is common to all
 // weights and cancels from both ratios, so each perp's weight
@@ -65,7 +65,7 @@ struct Fenwick {
 
 struct AttachSim {
   // parameters
-  double m, beta_e, delta, theta, window, lambda_new, lambda_new0, size_new, frailty_shape;
+  double m, beta_e, delta, theta, window, lambda_new, lambda_new0, size_new, random_effect_shape;
   bool use_degree, use_cof, log1p_scale, negbin, min_one;
   // perp state
   std::vector<double> u, last;
@@ -101,7 +101,7 @@ struct AttachSim {
 
 // [[Rcpp::export]]
 SEXP attach_sim_new(List params, bool use_degree, bool use_cof, bool log1p_scale,
-                    double window, bool negbin, bool min_one, double frailty_shape,
+                    double window, bool negbin, bool min_one, double random_effect_shape,
                     double t0) {
   AttachSim* sim = new AttachSim();
   auto get = [&](const char* nm, double dflt) {
@@ -120,7 +120,7 @@ SEXP attach_sim_new(List params, bool use_degree, bool use_cof, bool log1p_scale
   sim->window = window;
   sim->negbin = negbin;
   sim->min_one = min_one;
-  sim->frailty_shape = frailty_shape;
+  sim->random_effect_shape = random_effect_shape;
   sim->t_ref = t0;
   sim->stamp_id = 0;
   return XPtr<AttachSim>(sim, true);
@@ -188,8 +188,8 @@ List attach_sim_step(SEXP ptr, double t) {
   const bool shifted = S.min_one && joined.empty();
   const int n_new = (int)shifted + (int)S.draw_count(shifted ? S.lambda_new0 : S.lambda_new);
   for (int a = 0; a < n_new; ++a) {
-    S.u.push_back(std::isfinite(S.frailty_shape)
-                    ? R::rgamma(S.frailty_shape, 1.0 / S.frailty_shape) : 1.0);
+    S.u.push_back(std::isfinite(S.random_effect_shape)
+                    ? R::rgamma(S.random_effect_shape, 1.0 / S.random_effect_shape) : 1.0);
     S.last.push_back(t);
     S.deg.push_back(0);
     S.x.push_back(0);
