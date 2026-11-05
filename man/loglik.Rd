@@ -20,6 +20,7 @@ loglik(
   excitation = NULL,
   attachment = NULL,
   kernel = c("exp", "exp2"),
+  part = c("both", "time", "marks"),
   ...
 )
 }
@@ -71,6 +72,12 @@ to add a fast component \eqn{K_{fast} \sum_i e^{-\beta_{fast}(t - t_i)}}
 with unit jumps; \code{K}, \code{beta} and any \code{excitation} stay with the slow
 component. \code{params} must then contain \code{K_fast} and \code{beta_fast}, and the
 likelihood is \code{-Inf} unless \code{beta_fast > beta}.}
+
+\item{part}{\code{"both"} (default) for the full log-likelihood, \code{"time"} for
+the time part only (when events happen) or \code{"marks"} for the mark part
+only (who takes part). The two parts share no parameters, so the full
+log-likelihood is their sum, and \code{params} only needs the parameters of the
+part(s) asked for.}
 
 \item{...}{Additional arguments forwarded to the mark PMF / edge-probability
 functions (e.g. \code{delta}, \code{model_cache}, etc.).}

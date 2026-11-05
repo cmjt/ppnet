@@ -37,7 +37,14 @@
 
 \method{anova}{ppnet_fit}(object, ...)
 
-\method{simulate}{ppnet_fit}(object, nsim = 1, seed = NULL, T_end = object$model$T_end, ...)
+\method{simulate}{ppnet_fit}(
+  object,
+  nsim = 1,
+  seed = NULL,
+  T_end = object$model$T_end,
+  params = NULL,
+  ...
+)
 }
 \arguments{
 \item{object, x}{A fit from \code{\link[=fit_hawkesNet]{fit_hawkesNet()}}.}
@@ -63,6 +70,11 @@ seed, as for \code{\link[stats:simulate]{stats::simulate()}}.}
 
 \item{T_end}{For \code{simulate()}: end of the simulation window (default: the
 fit's).}
+
+\item{params}{For \code{simulate()}: parameters to use in place of, or in
+addition to, the fitted ones. A fit of one part (\code{part = "time"} or
+\code{"marks"}) needs the other part's parameters here, e.g.
+\code{simulate(mark_fit, params = coef(time_fit))}.}
 }
 \value{
 \code{coef()}: named vector of estimates. \code{vcov()}: covariance matrix,

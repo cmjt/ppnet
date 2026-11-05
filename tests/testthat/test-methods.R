@@ -58,7 +58,7 @@ test_that("summary tests only the parameters that can be 0 and lists fixed ones"
   s <- summary(fit_c)
   expect_s3_class(s, "summary.ppnet_fit")
   tab <- s$coefficients
-  expect_equal(rownames(tab), c("mu", "K", "beta", "lambda_new", "gamma"))
+  expect_equal(rownames(tab), c("mu", "K", "beta", "gamma", "lambda_new"))
   expect_true(all(is.na(tab[c("mu", "K", "beta", "lambda_new"), "z value"])))
   expect_equal(tab["gamma", "z value"], tab["gamma", "Estimate"] / tab["gamma", "Std. Error"])
   expect_equal(names(s$fixed), "beta_edges")
@@ -98,4 +98,59 @@ test_that("simulate() uses the fitted model and handles the seed like stats::sim
   expect_equal(a, b)
   short <- simulate(fit_m, T_end = 5, seed = 1)[[1]]
   expect_lte(max(short$times$t), 5)
+})
+
+test_that("the time and mark parts add up to the full log-likelihood", {
+  ll <- function(part) loglik(ev_m, p_m, mark_type = "ba_bip", part = part)
+  expect_equal(ll("time") + ll("marks"), ll("both"))
+  # Each part needs only its own parameters.
+  expect_equal(loglik(ev_m, p_m[c("mu", "K", "beta")], mark_type = "ba_bip", part = "time"),
+               ll("time"))
+  expect_equal(loglik(ev_m, p_m[c("beta_edges", "lambda_new")], mark_type = "ba_bip",
+                      part = "marks"), ll("marks"))
+})
+
+test_that("one-part fits match the joint fit and count only their own parameters", {
+  ft <- fit_hawkesNet(ev_m, mark_type = "ba_bip", part = "time", hessian = TRUE)
+  fm <- fit_hawkesNet(ev_m, mark_type = "ba_bip", part = "marks", hessian = TRUE)
+  expect_equal(names(coef(ft)), c("mu", "K", "beta"))
+  expect_equal(names(coef(fm)), c("beta_edges", "lambda_new"))
+  expect_equal(c(coef(ft), coef(fm))[names(coef(fit_m))], coef(fit_m), tolerance = 1e-3)
+  expect_equal(ft$loglik + fm$loglik, fit_m$loglik, tolerance = 1e-6)
+  expect_equal(attr(logLik(ft), "df"), 3L)
+  expect_equal(sqrt(diag(vcov(ft))), sqrt(diag(vcov(fit_m)))[1:3], tolerance = 1e-2)
+  expect_true(any(grepl("time part only", capture.output(summary(ft)))))
+  # Entries for the other part are ignored.
+  ft2 <- fit_hawkesNet(ev_m, c(p_m, list(mu = 2)), mark_type = "ba_bip", part = "time")
+  expect_equal(names(coef(ft2)), c("mu", "K", "beta"))
+  expect_error(compare_fits(time = ft, marks = fm), "different parts")
+  # simulate() needs the other part's parameters.
+  expect_error(simulate(fm, seed = 1), "give the time parameters")
+  sims <- simulate(fm, seed = 1, params = coef(ft))
+  expect_s3_class(sims[[1]], "events")
+})
+
+test_that("default starting values reach the same fit as given ones", {
+  f0 <- fit_hawkesNet(ev_m, mark_type = "ba_bip")
+  expect_equal(coef(f0), coef(fit_m), tolerance = 1e-3)
+  expect_equal(f0$loglik, fit_m$loglik, tolerance = 1e-6)
+})
+
+test_that("defaults cover the baseline, excitation, exp2 and attachment terms", {
+  sp <- attachment_spec(coffenders = TRUE, paths = TRUE, coffender_window = 10, episode_gap = 0.2,
+                        recent = TRUE, new_perps = "negbin", min_perps = 1, random_effect = TRUE)
+  exc <- excitation_spec(size = FALSE, connectedness = TRUE, connectedness_window = 10)
+  bl <- baseline_spec(periods = c(year = 20))
+  st <- .default_start(ev_m, "both", "ba_bip", "exp2", bl, exc, sp)
+  expect_setequal(names(st), c(.time_param_names("exp2", bl, exc), attachment_param_names(sp)))
+  expect_true(st$beta_fast > st$beta)
+  expect_true(all(unlist(st[c("theta", "theta_paths", "theta_recent", "gamma",
+                              "b_year_cos1", "b_year_sin1")]) == 0))
+  pos <- setdiff(names(st), c("theta", "theta_paths", "theta_recent", "gamma",
+                              "b_year_cos1", "b_year_sin1"))
+  expect_true(all(unlist(st[pos]) > 0))
+  # And a time fit with them runs.
+  f <- fit_hawkesNet(ev_m, mark_type = "ba_bip", part = "time", kernel = "exp2",
+                     baseline = bl, excitation = exc)
+  expect_equal(f$convergence, 0L)
 })

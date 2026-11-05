@@ -32,11 +32,13 @@ temporal_intensity_from_cache <- function(cache, mu, K, beta, kernel_density = F
     excitation = NULL,
     attachment = NULL,
     kernel = c("exp", "exp2"),
+    part = c("both", "time", "marks"),
     ...
 ) {
   stopifnot(inherits(events, "events"))
   event_times <- events$times$t
   kernel <- match.arg(kernel)
+  part <- match.arg(part)
 
   # In the case of no events
   if (length(event_times) == 0L) {
@@ -62,7 +64,7 @@ temporal_intensity_from_cache <- function(cache, mu, K, beta, kernel_density = F
     stop("`excitation` must be NULL or an excitation_spec().", call. = FALSE)
   }
   # Excitation covariates are marks of the observed history, fixed by the data.
-  exc_design <- if (!is.null(excitation)) .excitation_design(excitation, events)
+  exc_design <- if (!is.null(excitation) && part != "marks") .excitation_design(excitation, events)
 
   # Grab the lists of node and edge arrivals by event
   arrivals <- nodes_by_event(events)
@@ -86,7 +88,14 @@ temporal_intensity_from_cache <- function(cache, mu, K, beta, kernel_density = F
     mark_type <- "attach"
   }
 
-  mark_logpmf <- switch(
+  # With part = "time" the mark part is left out (not even compiled).
+  mark_logpmf <- if (part == "time") {
+    function(params, gradient = FALSE) {
+      out <- 0
+      if (gradient) attr(out, "gradient") <- numeric(0)
+      out
+    }
+  } else switch(
     mark_type,
     "attach" = compile_logpmf_attach(events, attachment),
     "ba" = if (use_arrays) compile_logpmf_ba_array(events, delta = 0.001, ...) else compile_logpmf_ba(
@@ -163,6 +172,14 @@ temporal_intensity_from_cache <- function(cache, mu, K, beta, kernel_density = F
   # with respect to mu, K, beta, the baseline and excitation coefficients and the mark
   # parameters; it is NULL if the mark model has no analytic gradient.
   function(params, gradient = FALSE) {
+    # With part = "marks" the time part is left out.
+    if (part == "marks") {
+      mark_ll_total <- mark_part(params, gradient)
+      ll <- as.numeric(mark_ll_total)
+      if (gradient && is.finite(ll)) attr(ll, "gradient") <- attr(mark_ll_total, "gradient")
+      return(ll)
+    }
+
     mu <- params$mu
     K <- params$K
     beta <- params$beta
@@ -278,6 +295,11 @@ temporal_intensity_from_cache <- function(cache, mu, K, beta, kernel_density = F
 #'   with unit jumps; `K`, `beta` and any `excitation` stay with the slow
 #'   component. `params` must then contain `K_fast` and `beta_fast`, and the
 #'   likelihood is `-Inf` unless `beta_fast > beta`.
+#' @param part `"both"` (default) for the full log-likelihood, `"time"` for
+#'   the time part only (when events happen) or `"marks"` for the mark part
+#'   only (who takes part). The two parts share no parameters, so the full
+#'   log-likelihood is their sum, and `params` only needs the parameters of the
+#'   part(s) asked for.
 #'
 #' @return A numeric scalar log-likelihood. Returns `-Inf` for invalid parameter
 #'   values or if the likelihood is undefined.
@@ -301,6 +323,7 @@ loglik <- function(
     excitation = NULL,
     attachment = NULL,
     kernel = c("exp", "exp2"),
+    part = c("both", "time", "marks"),
     ...
 ) {
   ll_fn <- .build_loglik_fn(
@@ -314,6 +337,7 @@ loglik <- function(
     excitation = excitation,
     attachment = attachment,
     kernel = kernel,
+    part = match.arg(part),
     ...
   )
   ll_fn(params)

@@ -103,8 +103,8 @@ test_that("attachment needs BA-bip and all its parameters", {
   set.seed(73)
   ev <- sim_hawkesNet(p_att, T_end = 5, mark_type = "ba_bip", attachment = att)$ev
   expect_error(loglik(ev, p_att, mark_type = "cs_bip", attachment = att), "ba_bip")
-  expect_error(fit_hawkesNet(ev, p_att[-7], mark_type = "ba_bip", attachment = att),
-               "Missing attachment parameters: theta")
+  # A missing attachment parameter starts at its default (theta at 0).
+  expect_equal(.default_start(ev, "marks", "ba_bip", attachment = att)$theta, 0)
   expect_equal(loglik(ev, modifyList(p_att, list(m = -1)), mark_type = "ba_bip", attachment = att), -Inf)
 })
 

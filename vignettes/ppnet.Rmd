@@ -51,16 +51,13 @@ head(event_summary(ev))
 
 ## The time part
 
-With the mark parameters held fixed, only `mu`, `K` and `beta` are
-estimated. This is the same model as `stelfi::fit_hawkes()`.
+The two parts share no parameters, so each can be fitted on its own with
+`part = "time"` or `part = "marks"`; starting values default to values
+worked out from the data. The time part alone is the same model as
+`stelfi::fit_hawkes()`:
 
 ```{r}
-time_names <- c("mu", "K", "beta")
-mark_names <- setdiff(names(truth), time_names)
-start <- modifyList(truth, list(mu = 1, K = 0.3, beta = 1))
-
-fit_time <- fit_hawkesNet(ev, start, fixed_params = mark_names,
-                          mark_type = "ba_bip", attachment = spec)
+fit_time <- fit_hawkesNet(ev, mark_type = "ba_bip", part = "time")
 summary(fit_time)
 ```
 
@@ -73,31 +70,24 @@ confint(fit_time)
 ```
 
 A two-scale kernel (`kernel = "exp2"`) adds a fast component. `AIC()` and
-`BIC()` compare fits as for `glm()`:
+`BIC()` compare fits of the same part as for `glm()`:
 
 ```{r}
-fit_exp2 <- fit_hawkesNet(ev, c(start, K_fast = 0.2, beta_fast = 10),
-                          fixed_params = mark_names, mark_type = "ba_bip",
-                          attachment = spec, kernel = "exp2")
+fit_exp2 <- fit_hawkesNet(ev, mark_type = "ba_bip", part = "time", kernel = "exp2")
 AIC(fit_time, fit_exp2)
 ```
 
 ## The mark part
 
-Now the time parameters are fixed at their estimates and the mark part is
-fitted. Dropping the co-offender term gives a nested model:
+The mark part is fitted the same way. Dropping the co-offender term gives a
+nested model, tested with `anova()`:
 
 ```{r}
-fixed_time <- fit_time$par[time_names]
-fit_marks <- fit_hawkesNet(ev, c(fixed_time, start[mark_names]),
-                           fixed_params = time_names, mark_type = "ba_bip",
-                           attachment = spec)
+fit_marks <- fit_hawkesNet(ev, mark_type = "ba_bip", part = "marks", attachment = spec)
 summary(fit_marks)
 
 spec0 <- attachment_spec(new_perps = "negbin", min_perps = 1)
-start0 <- start[setdiff(mark_names, "theta")]
-fit_marks0 <- fit_hawkesNet(ev, c(fixed_time, start0), fixed_params = time_names,
-                            mark_type = "ba_bip", attachment = spec0)
+fit_marks0 <- fit_hawkesNet(ev, mark_type = "ba_bip", part = "marks", attachment = spec0)
 anova(fit_marks0, fit_marks)
 ```
 
@@ -105,14 +95,17 @@ Further terms go into `attachment_spec()`: `paths` (3-paths), `recent`
 (own events within `episode_gap`), `random_effect` (individual propensities)
 and `cycles` (4-cycles, fitted by pseudo-likelihood, for which `vcov()`
 gives sandwich standard errors and likelihood comparisons are refused).
+Starting values can still be given for any parameter, e.g.
+`params_init = list(theta = 0.5)`, and `fixed_params` holds parameters at
+those values.
 
 ## Checking a fit
 
-`simulate()` draws new histories from a fitted model (here `fit_marks`,
-which holds the time part at its estimates), for checks against the data:
+`simulate()` draws new histories from a fitted model. A fit of one part
+needs the other part's parameters, here from the time fit:
 
 ```{r}
-sims <- simulate(fit_marks, nsim = 3, seed = 2)
+sims <- simulate(fit_marks, nsim = 3, seed = 2, params = coef(fit_time))
 c(observed = nrow(ev$times), simulated = vapply(sims, function(s) nrow(s$times), 1))
 ```
 

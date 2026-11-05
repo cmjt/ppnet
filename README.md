@@ -11,12 +11,17 @@ library(ppnet)
 truth <- list(mu = 2, K = 0.6, beta = 1.5, beta_edges = 0.3, lambda_new = 0.7)
 ev <- sim_hawkesNet(truth, T_end = 100, mark_type = "ba_bip")$ev
 
-# Fit, then use the usual model methods
-fit <- fit_hawkesNet(ev, truth, mark_type = "ba_bip")
+# Fit (starting values default to values worked out from the data),
+# then use the usual model methods
+fit <- fit_hawkesNet(ev, mark_type = "ba_bip")
 summary(fit)
 confint(fit)
 AIC(fit)
 sims <- simulate(fit, nsim = 10, seed = 1)
+
+# Or one part at a time: when events happen, and who takes part
+fit_time <- fit_hawkesNet(ev, mark_type = "ba_bip", part = "time")
+fit_marks <- fit_hawkesNet(ev, mark_type = "ba_bip", part = "marks")
 ```
 
 See `vignette("ppnet")` for building up the time part and the mark part of

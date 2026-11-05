@@ -106,8 +106,9 @@ test_that("excitation needs a bipartite history and its coefficients", {
                              excitation = excitation_spec()), "bipartite")
 
   ev_bip <- sim_hawkesNet(p_exc[1:5], T_end = 6, mark_type = "ba_bip")$ev
-  expect_error(fit_hawkesNet(ev_bip, p_exc[1:6], mark_type = "ba_bip", excitation = exc),
-               "Missing excitation coefficients")
+  # fit_hawkesNet() starts missing coefficients at 0 instead.
+  f <- fit_hawkesNet(ev_bip, p_exc[1:6], mark_type = "ba_bip", excitation = exc, part = "time")
+  expect_true(all(excitation_coef_names(exc) %in% names(coef(f))))
 })
 
 test_that("fit_hawkesNet recovers excitation coefficients", {

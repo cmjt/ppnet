@@ -1,11 +1,22 @@
 #' Fit a HawkesNet model by maximum likelihood
 #'
 #' @param events An events object created by `make_events()`.
-#' @param params_init Named list of starting values for all model parameters.
-#'   Must include the parameters required by the chosen `mark_type` (and any
-#'   baseline/intensity parameters used by `loglik()`).
+#' @param params_init Optional named list of starting values. Parameters not
+#'   given start at defaults worked out from the data (half the events from
+#'   the baseline, a branching ratio of 1/2, `m` and the new-perp rates from
+#'   the mean numbers of old and new perps per event, coefficients at 0). Only
+#'   the `CS_<statistic>` coefficients of the `"cs"` and `"cs_bip"` mark types
+#'   have no default. Values given here are used as they are, so they also set
+#'   the values of `fixed_params`.
 #' @param fixed_params Character vector of parameter names to hold fixed at
-#'   their `params_init` values.
+#'   their `params_init` (or default) values.
+#' @param part `"both"` (default) to fit the whole model, `"time"` for the
+#'   time part only (when events happen) or `"marks"` for the mark part only
+#'   (who takes part). The parts share no parameters, so fitting them
+#'   separately gives the same estimates as fitting them together, and each
+#'   is much quicker. A one-part fit only has, and only counts, that part's
+#'   parameters and log-likelihood, so compare fits of the same part only;
+#'   `params_init` entries for the other part are ignored.
 #' @param transform Named character vector giving the working-scale transform
 #'   for each parameter in `params_init` (e.g. `"log"`). Missing entries default
 #'   to `"log"`. If `NULL`, all parameters default to `"log"`.
@@ -20,15 +31,15 @@
 #'   functions used inside `loglik()`.
 #' @param formula_rhs String, the CS kernel formula.
 #' @param baseline Optional [baseline_spec()] for a time-varying baseline. Its
-#'   coefficients (see [baseline_coef_names()]) must be in `params_init`, and
-#'   default to the `"none"` transform.
+#'   coefficients (see [baseline_coef_names()]) default to the `"none"`
+#'   transform.
 #' @param excitation Optional [excitation_spec()]; its coefficients (`alpha`,
-#'   `gamma`) must be in `params_init` and default to the `"none"` transform.
+#'   `gamma`) default to the `"none"` transform.
 #' @param attachment Optional [attachment_spec()]; `theta`, `theta_paths`, `theta_recent` and the 4-cycle coefficients default to the
 #'   `"none"` transform, the other attachment parameters to `"log"`.
 #' @param verbose Logical; if `TRUE`, report the fitting time with [message()].
-#' @param kernel `"exp"` or `"exp2"`; see [loglik()]. With `"exp2"`,
-#'   `params_init` must contain `K_fast` and `beta_fast`, with `beta_fast > beta`.
+#' @param kernel `"exp"` or `"exp2"`; see [loglik()]. With `"exp2"`, the
+#'   starting values need `beta_fast > beta`.
 #'
 #' @return A list with components:
 #' \describe{
@@ -56,24 +67,16 @@
 #'   mark_type = "ba"
 #' )
 #'
-#' params_init <- list(
-#'   mu = 1,
-#'   K = 1,
-#'   beta = 1,
-#'   beta_edges = 1
-#' )
+#' fit <- fit_hawkesNet(sim$ev, mark_type = "ba")
+#' summary(fit)
 #'
-#' fit <- fit_hawkesNet(
-#'   events = sim$ev,
-#'   params_init = params_init,
-#'   mark_type = "ba"
-#' )
-#'
-#' fit$par
+#' # The time part alone, with a given start for mu
+#' fit_time <- fit_hawkesNet(sim$ev, list(mu = 1), mark_type = "ba", part = "time")
+#' coef(fit_time)
 #'
 #' @export
 fit_hawkesNet <- function(events,
-                          params_init,
+                          params_init = NULL,
                           fixed_params = NULL,
                           transform = NULL,
                           hessian = FALSE,
@@ -87,22 +90,34 @@ fit_hawkesNet <- function(events,
                           excitation = NULL,
                           attachment = NULL,
                           kernel = c("exp", "exp2"),
+                          part = c("both", "time", "marks"),
                           verbose = FALSE,
                           ...
                           ) {
   # 0) Input validation
 
-  # Make sure starting values are provided for the optimizer
-  stopifnot(is.list(params_init), length(params_init) > 0)
-
   start_time <- proc.time()
+  stopifnot(inherits(events, "events"))
+  kernel <- match.arg(kernel)
+  part <- match.arg(part)
+
+  # Starting values: defaults from the data, overridden by params_init. A
+  # one-part fit keeps only that part's parameters.
+  if (!is.null(params_init) && !is.list(params_init)) stop("`params_init` must be a named list.", call. = FALSE)
+  params_init <- utils::modifyList(
+    .default_start(events, part, mark_type, kernel, baseline, excitation, attachment, T0, T_end),
+    params_init %||% list()
+  )
+  time_names <- .time_param_names(kernel, baseline, excitation)
+  if (part == "time") params_init <- params_init[names(params_init) %in% time_names]
+  if (part == "marks") params_init <- params_init[!names(params_init) %in% time_names]
+  if (part != "both") fixed_params <- intersect(fixed_params, names(params_init))
 
   # Check up front: inside the objective a missing coefficient would be caught
   # and look like an infeasible point, so the fit would fail silently.
-  if (!is.null(baseline)) .baseline_coefs(baseline, params_init)
-  if (!is.null(excitation)) .excitation_coefs(excitation, params_init)
-  kernel <- match.arg(kernel)
-  if (kernel == "exp2") {
+  if (!is.null(baseline) && part != "marks") .baseline_coefs(baseline, params_init)
+  if (!is.null(excitation) && part != "marks") .excitation_coefs(excitation, params_init)
+  if (kernel == "exp2" && part != "marks") {
     if (!all(c("K_fast", "beta_fast") %in% names(params_init))) {
       stop("kernel = 'exp2' needs K_fast and beta_fast in params_init.", call. = FALSE)
     }
@@ -110,7 +125,8 @@ fit_hawkesNet <- function(events,
       stop("kernel = 'exp2' needs beta_fast > beta in params_init.", call. = FALSE)
     }
   }
-  missing_attach <- setdiff(attachment_param_names(attachment), names(params_init))
+  missing_attach <- if (part == "time") character(0) else
+    setdiff(attachment_param_names(attachment), names(params_init))
   if (length(missing_attach) > 0L) {
     stop("Missing attachment parameters: ", paste(missing_attach, collapse = ", "), call. = FALSE)
   }
@@ -174,6 +190,7 @@ fit_hawkesNet <- function(events,
     excitation = excitation,
     attachment = attachment,
     kernel = kernel,
+    part = part,
     ...
   )
 
@@ -236,7 +253,7 @@ fit_hawkesNet <- function(events,
                     T_end = T_end %||% max(events$times$t),
                     baseline = baseline, excitation = excitation,
                     attachment = attachment, kernel = kernel,
-                    formula_rhs = formula_rhs, dots = list(...))
+                    formula_rhs = formula_rhs, part = part, dots = list(...))
   out$transform <- transform
   out$fixed <- fixed_params
   if (hessian) out$hessian <- fit$hessian

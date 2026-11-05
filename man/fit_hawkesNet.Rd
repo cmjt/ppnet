@@ -6,7 +6,7 @@
 \usage{
 fit_hawkesNet(
   events,
-  params_init,
+  params_init = NULL,
   fixed_params = NULL,
   transform = NULL,
   hessian = FALSE,
@@ -20,6 +20,7 @@ fit_hawkesNet(
   excitation = NULL,
   attachment = NULL,
   kernel = c("exp", "exp2"),
+  part = c("both", "time", "marks"),
   verbose = FALSE,
   ...
 )
@@ -27,12 +28,16 @@ fit_hawkesNet(
 \arguments{
 \item{events}{An events object created by \code{make_events()}.}
 
-\item{params_init}{Named list of starting values for all model parameters.
-Must include the parameters required by the chosen \code{mark_type} (and any
-baseline/intensity parameters used by \code{loglik()}).}
+\item{params_init}{Optional named list of starting values. Parameters not
+given start at defaults worked out from the data (half the events from
+the baseline, a branching ratio of 1/2, \code{m} and the new-perp rates from
+the mean numbers of old and new perps per event, coefficients at 0). Only
+the \verb{CS_<statistic>} coefficients of the \code{"cs"} and \code{"cs_bip"} mark types
+have no default. Values given here are used as they are, so they also set
+the values of \code{fixed_params}.}
 
 \item{fixed_params}{Character vector of parameter names to hold fixed at
-their \code{params_init} values.}
+their \code{params_init} (or default) values.}
 
 \item{transform}{Named character vector giving the working-scale transform
 for each parameter in \code{params_init} (e.g. \code{"log"}). Missing entries default
@@ -54,17 +59,25 @@ components where supported).}
 \item{formula_rhs}{String, the CS kernel formula.}
 
 \item{baseline}{Optional \code{\link[=baseline_spec]{baseline_spec()}} for a time-varying baseline. Its
-coefficients (see \code{\link[=baseline_coef_names]{baseline_coef_names()}}) must be in \code{params_init}, and
-default to the \code{"none"} transform.}
+coefficients (see \code{\link[=baseline_coef_names]{baseline_coef_names()}}) default to the \code{"none"}
+transform.}
 
 \item{excitation}{Optional \code{\link[=excitation_spec]{excitation_spec()}}; its coefficients (\code{alpha},
-\code{gamma}) must be in \code{params_init} and default to the \code{"none"} transform.}
+\code{gamma}) default to the \code{"none"} transform.}
 
 \item{attachment}{Optional \code{\link[=attachment_spec]{attachment_spec()}}; \code{theta}, \code{theta_paths}, \code{theta_recent} and the 4-cycle coefficients default to the
 \code{"none"} transform, the other attachment parameters to \code{"log"}.}
 
-\item{kernel}{\code{"exp"} or \code{"exp2"}; see \code{\link[=loglik]{loglik()}}. With \code{"exp2"},
-\code{params_init} must contain \code{K_fast} and \code{beta_fast}, with \code{beta_fast > beta}.}
+\item{kernel}{\code{"exp"} or \code{"exp2"}; see \code{\link[=loglik]{loglik()}}. With \code{"exp2"}, the
+starting values need \code{beta_fast > beta}.}
+
+\item{part}{\code{"both"} (default) to fit the whole model, \code{"time"} for the
+time part only (when events happen) or \code{"marks"} for the mark part only
+(who takes part). The parts share no parameters, so fitting them
+separately gives the same estimates as fitting them together, and each
+is much quicker. A one-part fit only has, and only counts, that part's
+parameters and log-likelihood, so compare fits of the same part only;
+\code{params_init} entries for the other part are ignored.}
 
 \item{verbose}{Logical; if \code{TRUE}, report the fitting time with \code{\link[=message]{message()}}.}
 
@@ -101,19 +114,11 @@ sim <- sim_hawkesNet(
   mark_type = "ba"
 )
 
-params_init <- list(
-  mu = 1,
-  K = 1,
-  beta = 1,
-  beta_edges = 1
-)
+fit <- fit_hawkesNet(sim$ev, mark_type = "ba")
+summary(fit)
 
-fit <- fit_hawkesNet(
-  events = sim$ev,
-  params_init = params_init,
-  mark_type = "ba"
-)
-
-fit$par
+# The time part alone, with a given start for mu
+fit_time <- fit_hawkesNet(sim$ev, list(mu = 1), mark_type = "ba", part = "time")
+coef(fit_time)
 
 }

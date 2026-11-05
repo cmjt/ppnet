@@ -13,7 +13,7 @@
   ll_fn <- do.call(.build_loglik_fn, c(
     list(events = fit$events, T_end = m$T_end, T0 = m$T0, mark_type = m$mark_type,
          formula_rhs = m$formula_rhs, baseline = m$baseline, excitation = m$excitation,
-         attachment = m$attachment, kernel = m$kernel),
+         attachment = m$attachment, kernel = m$kernel, part = m$part %||% "both"),
     m$dots
   ))
   free <- .free_names(fit)
@@ -66,6 +66,10 @@
 #'   seed, as for [stats::simulate()].
 #' @param T_end For `simulate()`: end of the simulation window (default: the
 #'   fit's).
+#' @param params For `simulate()`: parameters to use in place of, or in
+#'   addition to, the fitted ones. A fit of one part (`part = "time"` or
+#'   `"marks"`) needs the other part's parameters here, e.g.
+#'   `simulate(mark_fit, params = coef(time_fit))`.
 #' @param digits Number of significant digits to print.
 #' @param ... For `anova()`: further fits to compare. For `simulate()`:
 #'   passed to [sim_hawkesNet()]. Otherwise unused.
@@ -181,7 +185,7 @@ summary.ppnet_fit <- function(object, ...) {
   fixed <- object$fixed %||% setdiff(names(object$par), free)
   structure(list(
     call = object$call, coefficients = tab, fixed = unlist(object$par[fixed]),
-    pseudo = .is_pseudo(object), se_type = attr(V, "type"),
+    pseudo = .is_pseudo(object), se_type = attr(V, "type"), part = object$model$part %||% "both",
     loglik = object$loglik, n_par = length(free), nobs = nobs(object),
     convergence = object$convergence
   ), class = "summary.ppnet_fit")
@@ -200,7 +204,8 @@ print.summary.ppnet_fit <- function(x, digits = max(3L, getOption("digits") - 3L
     cat("\nFixed: ", paste(names(x$fixed), format(x$fixed, digits = digits), sep = " = ",
                          collapse = ", "), "\n", sep = "")
   }
-  cat("\n", x$nobs, " events, ", x$n_par, " free parameters. ", sep = "")
+  cat("\n", x$nobs, " events, ", x$n_par, " free parameters",
+      if (x$part != "both") paste0(" (", sub("s$", "", x$part), " part only)"), ". ", sep = "")
   if (x$pseudo) {
     cat("Log pseudo-likelihood: ", format(x$loglik, digits = digits + 2),
         " (AIC and likelihood-ratio tests are not valid).\n", sep = "")
@@ -238,7 +243,27 @@ anova.ppnet_fit <- function(object, ...) {
 
 #' @rdname ppnet-methods
 #' @export
-simulate.ppnet_fit <- function(object, nsim = 1, seed = NULL, T_end = object$model$T_end, ...) {
+simulate.ppnet_fit <- function(object, nsim = 1, seed = NULL, T_end = object$model$T_end,
+                               params = NULL, ...) {
+  # A one-part fit has only that part's parameters: the others come from `params`.
+  p <- utils::modifyList(object$par, as.list(params %||% list()))
+  m <- object$model
+  part <- m$part %||% "both"
+  if (part != "both") {
+    need <- if (part == "marks") {
+      .time_param_names(m$kernel, m$baseline, m$excitation)
+    } else {
+      names(.default_start(object$events, "marks", m$mark_type, m$kernel, attachment = m$attachment,
+                           T0 = m$T0, T_end = m$T_end))
+    }
+    missing <- setdiff(need, names(p))
+    if (length(missing)) {
+      other <- if (part == "marks") "time" else "mark"
+      stop("This fit has only the ", part, " part: give the ", other, " parameters (",
+           paste(missing, collapse = ", "), ") in `params`, e.g. params = coef(",
+           other, "_fit).", call. = FALSE)
+    }
+  }
   # Seed handling as in stats:::simulate.lm.
   if (!exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) stats::runif(1)
   if (is.null(seed)) {
@@ -249,8 +274,7 @@ simulate.ppnet_fit <- function(object, nsim = 1, seed = NULL, T_end = object$mod
     RNGstate <- structure(seed, kind = as.list(RNGkind()))
     on.exit(assign(".Random.seed", R.seed, envir = .GlobalEnv))
   }
-  m <- object$model
-  args <- c(list(params = object$par, T_end = T_end, T0 = m$T0, mark_type = m$mark_type,
+  args <- c(list(params = p, T_end = T_end, T0 = m$T0, mark_type = m$mark_type,
                  baseline = m$baseline, excitation = m$excitation,
                  attachment = m$attachment, kernel = m$kernel, return_net = FALSE),
             if (!is.null(m$formula_rhs)) list(formula_rhs = m$formula_rhs),

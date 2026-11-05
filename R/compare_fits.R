@@ -26,6 +26,11 @@ compare_fits <- function(..., test = TRUE) {
   if (!all(vapply(fits, inherits, logical(1), "hawkesNet_fit"))) {
     stop("All arguments must be fits from fit_hawkesNet().", call. = FALSE)
   }
+  parts <- vapply(fits, function(f) f$model$part %||% "both", character(1))
+  if (length(unique(parts)) > 1L) {
+    stop("The fits are of different parts (", paste(unique(parts), collapse = ", "),
+         "): their log-likelihoods cannot be compared.", call. = FALSE)
+  }
   pseudo <- vapply(fits, .is_pseudo, logical(1))
   if (any(pseudo)) {
     stop("Pseudo-likelihood (4-cycle) fits cannot be compared by likelihood or AIC: ",

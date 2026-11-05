@@ -58,8 +58,9 @@ test_that("missing baseline coefficients are an error", {
   ev <- sim_hawkesNet(p_base[1:5], T_end = 8, mark_type = "ba_bip")$ev
   expect_error(loglik(ev, p_base[1:6], mark_type = "ba_bip", baseline = spec),
                "Missing baseline coefficients")
-  expect_error(fit_hawkesNet(ev, p_base[1:6], mark_type = "ba_bip", baseline = spec),
-               "Missing baseline coefficients")
+  # fit_hawkesNet() starts missing coefficients at 0 instead.
+  f <- fit_hawkesNet(ev, p_base[1:6], mark_type = "ba_bip", baseline = spec, part = "time")
+  expect_true(all(baseline_coef_names(spec) %in% names(coef(f))))
 })
 
 test_that("the thinning bound holds over the window", {
