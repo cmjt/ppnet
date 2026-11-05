@@ -166,6 +166,24 @@ temporal_intensity_from_cache <- function(cache, mu, K, beta, kernel_density = F
   # Mark evaluators that can give analytic gradients take a `gradient` argument
   mark_has_grad <- "gradient" %in% names(formals(mark_logpmf))
 
+  # The mark part depends only on the mark parameters, so keep the last result
+  # and reuse it while they are unchanged: a fit with all mark parameters fixed
+  # (or a line search that only moves time parameters) then evaluates it once.
+  time_names <- c("mu", "K", "beta", "K_fast", "beta_fast",
+                  baseline_coef_names(baseline), excitation_coef_names(excitation))
+  mark_cache <- new.env(parent = emptyenv())
+  mark_part <- function(params, gradient) {
+    key <- params[setdiff(names(params), time_names)]
+    if (identical(key, mark_cache$key) && (!gradient || !mark_has_grad || mark_cache$grad)) {
+      return(mark_cache$value)
+    }
+    value <- if (mark_has_grad) mark_logpmf(params, gradient = gradient) else mark_logpmf(params)
+    mark_cache$key <- key
+    mark_cache$value <- value
+    mark_cache$grad <- gradient
+    value
+  }
+
   # Return the likelihood function over params (natural scale). With
   # `gradient = TRUE` the value carries attribute "gradient", the derivatives
   # with respect to mu, K, beta, the baseline and excitation coefficients and the mark
@@ -203,7 +221,7 @@ temporal_intensity_from_cache <- function(cache, mu, K, beta, kernel_density = F
     }
 
     # mark loglik ONCE (it already sums over events)
-    mark_ll_total <- if (mark_has_grad) mark_logpmf(params, gradient = gradient) else mark_logpmf(params)
+    mark_ll_total <- mark_part(params, gradient)
     if (!is.finite(mark_ll_total)) return(-Inf)
 
     if (is.null(excitation)) {

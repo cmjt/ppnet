@@ -165,3 +165,23 @@ test_that("fit_hawkesNet moves free parameters when others are fixed", {
   expect_gt(fit$loglik, loglik(ev, init, mark_type = "ba_bip", T_end = 20))
   expect_equal(fit$par[c("beta", "beta_edges", "lambda_new")], init[c("beta", "beta_edges", "lambda_new")])
 })
+
+test_that("the cached mark part gives the same likelihood and gradient as a fresh one", {
+  set.seed(19)
+  p <- list(mu = 1, K = 0.5, beta = 1, beta_edges = 0.3, lambda_new = 0.7)
+  ev <- sim_hawkesNet(p, T_end = 15, mark_type = "ba_bip")$ev
+  p_time <- modifyList(p, list(mu = 1.3, K = 0.4))     # time parameters only
+  p_mark <- modifyList(p, list(beta_edges = 0.6))      # a mark parameter
+
+  fresh <- function(q, gradient = FALSE) {
+    .build_loglik_fn(ev, T_end = 15, mark_type = "ba_bip")(q, gradient = gradient)
+  }
+  f <- .build_loglik_fn(ev, T_end = 15, mark_type = "ba_bip")
+  # Alternate calls so each one either reuses or replaces the cached mark part,
+  # with and without the gradient.
+  for (q in list(p, p_time, p_mark, p_time, p)) {
+    expect_equal(f(q), fresh(q))
+    expect_equal(f(q, gradient = TRUE), fresh(q, gradient = TRUE))
+  }
+  expect_equal(f(p_mark, gradient = TRUE), fresh(p_mark, gradient = TRUE))
+})
