@@ -15,10 +15,14 @@
 #   a <- as.numeric(table(perp ids over event-perp edges)); var(a) / mean(a),
 # to see which scenario is realistic.
 #
-# Run from inside the ppnet repo, with the package installed.
+# Run with the package installed, e.g.
+#   source(system.file("studies", "gamma_null_check.R", package = "ppnet"))
 
 library(ppnet)
 library(parallel)
+
+# Where to save the results (set `out_file` before sourcing to change it).
+if (!exists("out_file")) out_file <- "gamma_null_check.rds"
 
 n_rep <- 20
 T_end <- 520                          # weeks
@@ -82,4 +86,4 @@ summary_tab <- do.call(rbind, lapply(split(res, res$scenario), function(d) {
 }))
 print(summary_tab[match(names(scenarios), summary_tab$scenario), ], digits = 3,
       row.names = FALSE)
-saveRDS(res, "GAMMA_null_check.rds")
+saveRDS(res, out_file)

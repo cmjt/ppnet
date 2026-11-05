@@ -1,14 +1,12 @@
 #!/usr/bin/env Rscript
 
 suppressPackageStartupMessages({
-  library(devtools)
   library(network)
-  library(ernm)
-  devtools::load_all()
+  library(ppnet)
 })
 
 args <- commandArgs(trailingOnly = TRUE)
-if (length(args) < 2) stop("Usage: run_ba_rep.R <rep_id> <out_dir>")
+if (length(args) < 2) stop("Usage: Rscript ba_replicate.R <rep_id> <out_dir>")
 
 rep_id <- as.integer(args[[1]])
 out_dir <- args[[2]]
@@ -81,11 +79,6 @@ res <- list(
   params_true = params_true,
   status = "ok"
 )
-
-# ---- load package (edit if needed) ----
-# If running inside the ppnet package repo, this is often enough:
-# devtools::load_all()
-# Otherwise assume it's installed:
 
 # ---- simulate ----
 sim_out <- tryCatch({

@@ -1,14 +1,12 @@
 #!/usr/bin/env Rscript
 
 suppressPackageStartupMessages({
-  library(devtools)
   library(network)
-  library(ernm)
-  devtools::load_all()
+  library(ppnet)
 })
 
 args <- commandArgs(trailingOnly = TRUE)
-if (length(args) < 2) stop("Usage: run_cs_rep.R <rep_id> <out_dir>")
+if (length(args) < 2) stop("Usage: Rscript cs_replicate.R <rep_id> <out_dir>")
 
 rep_id <- as.integer(args[[1]])
 out_dir <- args[[2]]

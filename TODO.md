@@ -2,7 +2,7 @@
 
 ## Model checks (step 6)
 
-- [x] **Simulation check of the co-offender effect `theta`** (`ATTACH_theta_check.R`). Simulate with
+- [x] **Simulation check of the co-offender effect `theta`** (`inst/studies/theta_null_check.R`). Simulate with
   `attachment_spec(degree = TRUE, coffenders = TRUE)`, `theta = 0` and perp
   random effect (`sim_hawkesNet(random_effect_shape = ...)`), fit the model, and record how
   often `theta` comes out positive and significant. Repeat over a few random-effect
@@ -11,7 +11,7 @@
   significant in every replicate, so a positive `theta` is not evidence of a
   co-offender effect without individual effects (M4).
 - [x] **Perp-driven null for the event-level `gamma`** (`sim_perp_events()`,
-  `GAMMA_null_check.R`). Perps enter over time with exponential careers and
+  `inst/studies/gamma_null_check.R`). Perps enter over time with exponential careers and
   offend at rate `rate * u_v` (gamma random effect), optionally self-exciting on
   their own events or on every event they attend. Each offence is an event
   whose initiator brings `Poisson(extra_mean * u^size_link)` co-offenders,
