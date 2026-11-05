@@ -23,6 +23,7 @@ next_node_id <- function(net) {
 #' @param net Pre-event state (must include named deg, born).
 #' @param t_k Numeric scalar event time.
 #' @param params List containing at least beta_edges and delta.
+#' @param delta Degree offset: weights are proportional to degree + `delta`.
 #' @param new_node_id Optional character scalar to force the arriving node id
 #'   (useful for tests). If NULL, generated from state.
 #'

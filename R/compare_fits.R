@@ -26,6 +26,11 @@ compare_fits <- function(..., test = TRUE) {
   if (!all(vapply(fits, inherits, logical(1), "hawkesNet_fit"))) {
     stop("All arguments must be fits from fit_hawkesNet().", call. = FALSE)
   }
+  pseudo <- vapply(fits, .is_pseudo, logical(1))
+  if (any(pseudo)) {
+    stop("Pseudo-likelihood (4-cycle) fits cannot be compared by likelihood or AIC: ",
+         paste(names(fits)[pseudo], collapse = ", "), ".", call. = FALSE)
+  }
   n_ev <- vapply(fits, function(f) nrow(f$events$times), numeric(1))
   if (length(unique(n_ev)) > 1L) stop("The fits use different events.", call. = FALSE)
 

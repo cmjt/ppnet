@@ -7,8 +7,11 @@
 net_init()
 }
 \value{
-a network object
+An empty undirected network.
 }
 \description{
 Initialize the network-state object
+}
+\examples{
+net_init()
 }

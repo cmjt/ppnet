@@ -5,3 +5,5 @@
 ^_pkgdown\.yml$
 ^pkgdown$
 ^TODO\.md$
+^[A-Z_]+\.R$
+^GAMMA_null_check\.rds$

@@ -2,7 +2,7 @@
 % Please edit documentation in R/sim_hawkesNet.R
 \name{sim_hawkesNet}
 \alias{sim_hawkesNet}
-\title{Title}
+\title{Simulate a HawkesNet model}
 \usage{
 sim_hawkesNet(
   params,
@@ -20,10 +20,29 @@ sim_hawkesNet(
   kernel = c("exp", "exp2"),
   random_effect_shape = Inf,
   return_net = TRUE,
+  verbose = FALSE,
   ...
 )
 }
 \arguments{
+\item{params}{Named list of parameters on the natural scale, as for
+\code{\link[=loglik]{loglik()}}.}
+
+\item{T_end}{End of the simulation window.}
+
+\item{T0}{Start of the simulation window.}
+
+\item{delta}{Degree offset for the original BA mark models.}
+
+\item{mark_type}{One of \code{"ba"}, \code{"cs"}, \code{"ba_bip"}, \code{"cs_bip"}.}
+
+\item{return_ev}{Logical; return the simulated history as an events object.}
+
+\item{debug}{Logical; enable debug plotting.}
+
+\item{net_init_fun, net_step_fun}{Functions that create the starting network
+and add one event to it.}
+
 \item{baseline}{Optional \code{\link[=baseline_spec]{baseline_spec()}} for a time-varying baseline; its
 coefficients go in \code{params}.}
 
@@ -48,7 +67,25 @@ co-offender effect picks up.}
 \item{return_net}{Logical; also return the final \code{network} object. With
 \code{attachment} it is built once at the end, which is slow for long
 histories, so set \code{FALSE} when only \code{ev} is needed.}
+
+\item{verbose}{Logical; if \code{TRUE}, report the simulation time with
+\code{\link[=message]{message()}}.}
+
+\item{...}{Passed to the mark simulator (e.g. \code{formula_rhs} for the CS
+mark types).}
+}
+\value{
+A list with \code{events} (the number of events \code{n} and their times
+\code{t}), \code{accept_probs} (thinning acceptance probabilities), \code{ev} (an events
+object, if \code{return_ev}) and \code{net} (the final network, if \code{return_net}).
+\code{\link[=simulate]{simulate()}} on a fit calls this with the fitted parameters.
 }
 \description{
-Title
+Simulates event times by thinning and, at each event, its marks (new nodes
+and edges) from the chosen mark model.
+}
+\examples{
+sim <- sim_hawkesNet(list(mu = 1, K = 0.5, beta = 1, beta_edges = 0.3,
+                          lambda_new = 0.7), T_end = 10, mark_type = "ba_bip")
+sim$events$n
 }

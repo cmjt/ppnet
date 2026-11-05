@@ -2,7 +2,7 @@
 % Please edit documentation in R/utils.R
 \name{create_net_from_events}
 \alias{create_net_from_events}
-\title{Title}
+\title{Build the network from an events object}
 \usage{
 create_net_from_events(
   events,
@@ -12,6 +12,21 @@ create_net_from_events(
   debug = FALSE
 )
 }
+\arguments{
+\item{events}{An events object created by \code{\link[=make_events]{make_events()}}.}
+
+\item{net_init_fun}{Function returning the starting network (used when
+\code{net0} is \code{NULL}).}
+
+\item{net0}{Optional starting network.}
+
+\item{net_step_fun}{Function adding one event's nodes and edges.}
+
+\item{debug}{Logical; plot the network after each event and wait for Enter.}
+}
+\value{
+The final \code{network} object (or \code{0} if there are no events).
+}
 \description{
-Title
+Replays the events in order, adding each event's nodes and edges.
 }

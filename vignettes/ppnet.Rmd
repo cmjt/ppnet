@@ -1,0 +1,124 @@
+---
+title: "Getting started with ppnet"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting started with ppnet}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+ppnet models a growing bipartite network of events and the people
+("perps") who take part in them. The model has two parts, which share no
+parameters:
+
+* **the time part**, a Hawkes process for when events happen: a baseline
+  rate `mu` plus excitation `K exp(-beta t)` from each past event;
+* **the mark part**, who takes part in each event: new perps arrive at a
+  rate, and each old perp joins with a probability that depends on their
+  history (degree, recency, co-offenders, ...).
+
+This vignette simulates data from the model, then fits the time part and the
+mark part separately, as you would build up a model for real data.
+
+```{r}
+library(ppnet)
+```
+
+## Data
+
+Real data go into `make_events()` as a table of edges (event to perp, with
+times) and a table of nodes (with a `role` of `"event"` or `"perp"`). Here
+we simulate instead. `attachment_spec()` describes who joins each event:
+old perps are weighted by their degree, the time since they last took part
+and their number of past co-offenders, and the number of new perps is
+negative binomial with at least one perp per event.
+
+```{r}
+spec <- attachment_spec(coffenders = TRUE, coffender_window = 20,
+                        new_perps = "negbin", min_perps = 1)
+truth <- list(mu = 2, K = 0.6, beta = 1.5,
+              m = 0.5, beta_edges = 0.1, delta = 0.5, theta = 0.3,
+              lambda_new = 0.6, lambda_new0 = 0.4, size_new = 2)
+set.seed(1)
+ev <- sim_hawkesNet(truth, T_end = 150, mark_type = "ba_bip",
+                    attachment = spec, return_net = FALSE)$ev
+head(event_summary(ev))
+```
+
+## The time part
+
+With the mark parameters held fixed, only `mu`, `K` and `beta` are
+estimated. This is the same model as `stelfi::fit_hawkes()`.
+
+```{r}
+time_names <- c("mu", "K", "beta")
+mark_names <- setdiff(names(truth), time_names)
+start <- modifyList(truth, list(mu = 1, K = 0.3, beta = 1))
+
+fit_time <- fit_hawkesNet(ev, start, fixed_params = mark_names,
+                          mark_type = "ba_bip", attachment = spec)
+summary(fit_time)
+```
+
+Positive parameters are fitted on the log scale, so their standard errors
+come from the delta method and `confint()` gives intervals computed on the
+log scale:
+
+```{r}
+confint(fit_time)
+```
+
+A two-scale kernel (`kernel = "exp2"`) adds a fast component. `AIC()` and
+`BIC()` compare fits as for `glm()`:
+
+```{r}
+fit_exp2 <- fit_hawkesNet(ev, c(start, K_fast = 0.2, beta_fast = 10),
+                          fixed_params = mark_names, mark_type = "ba_bip",
+                          attachment = spec, kernel = "exp2")
+AIC(fit_time, fit_exp2)
+```
+
+## The mark part
+
+Now the time parameters are fixed at their estimates and the mark part is
+fitted. Dropping the co-offender term gives a nested model:
+
+```{r}
+fixed_time <- fit_time$par[time_names]
+fit_marks <- fit_hawkesNet(ev, c(fixed_time, start[mark_names]),
+                           fixed_params = time_names, mark_type = "ba_bip",
+                           attachment = spec)
+summary(fit_marks)
+
+spec0 <- attachment_spec(new_perps = "negbin", min_perps = 1)
+start0 <- start[setdiff(mark_names, "theta")]
+fit_marks0 <- fit_hawkesNet(ev, c(fixed_time, start0), fixed_params = time_names,
+                            mark_type = "ba_bip", attachment = spec0)
+anova(fit_marks0, fit_marks)
+```
+
+Further terms go into `attachment_spec()`: `paths` (3-paths), `recent`
+(own events within `episode_gap`), `random_effect` (individual propensities)
+and `cycles` (4-cycles, fitted by pseudo-likelihood, for which `vcov()`
+gives sandwich standard errors and likelihood comparisons are refused).
+
+## Checking a fit
+
+`simulate()` draws new histories from a fitted model (here `fit_marks`,
+which holds the time part at its estimates), for checks against the data:
+
+```{r}
+sims <- simulate(fit_marks, nsim = 3, seed = 2)
+c(observed = nrow(ev$times), simulated = vapply(sims, function(s) nrow(s$times), 1))
+```
+
+`diag_temporal()` gives time-rescaling residuals for the time part:
+
+```{r}
+d <- diag_temporal(ev, fit_time$par)
+ks.test(d$tau, "pexp")$p.value
+```

@@ -83,3 +83,10 @@ values or if the likelihood is undefined.
 Computes the log-likelihood for the observed event sequence under an
 exponential temporal Hawkes kernel and a chosen mark model (\code{mark_type}).
 }
+\examples{
+set.seed(1)
+params_true <- list(mu = 0.5, K = 0.5, beta = 0.5, beta_edges = 2)
+sim <- sim_hawkesNet(params = params_true, T_end = 10, mark_type = "ba")
+loglik(sim$ev, params_true, mark_type = "ba")
+
+}

@@ -26,6 +26,7 @@
 #'   `gamma`) must be in `params_init` and default to the `"none"` transform.
 #' @param attachment Optional [attachment_spec()]; `theta`, `theta_paths`, `theta_recent` and the 4-cycle coefficients default to the
 #'   `"none"` transform, the other attachment parameters to `"log"`.
+#' @param verbose Logical; if `TRUE`, report the fitting time with [message()].
 #' @param kernel `"exp"` or `"exp2"`; see [loglik()]. With `"exp2"`,
 #'   `params_init` must contain `K_fast` and `beta_fast`, with `beta_fast > beta`.
 #'
@@ -86,6 +87,7 @@ fit_hawkesNet <- function(events,
                           excitation = NULL,
                           attachment = NULL,
                           kernel = c("exp", "exp2"),
+                          verbose = FALSE,
                           ...
                           ) {
   # 0) Input validation
@@ -193,39 +195,11 @@ fit_hawkesNet <- function(events,
   # Transform the initial parameter values to working scale
   x0_all <- to_working(params_init, transform)
 
-  # Define the objective function
-  fn <- function(x) {
-    # optim() only passes the free parameters, so fill in the fixed ones
-    # before transforming back from working scale
-    x_all <- x0_all
-    x_all[free_params] <- x
-    p <- from_working(x_all, transform)
-    ll <- tryCatch(
-      ll_fn(p),
-      error = function(e) -Inf
-    )
-    if (!is.finite(ll)) return(1e100)
-    -ll
-  }
-
-  # Make sure to only optimize the free parameters
+  # Objective and gradient (negative log-likelihood, working scale)
+  obj <- .make_objective(ll_fn, x0_all, free_params, transform)
+  fn <- obj$fn
+  gr <- obj$gr
   x0 <- x0_all[free_params]
-
-  # Analytic gradient on the working scale, when the model provides one.
-  # d/dx = p * d/dp for log-transformed parameters. Parameters the likelihood
-  # does not use get gradient zero.
-  gr <- function(x) {
-    x_all <- x0_all
-    x_all[free_params] <- x
-    p <- from_working(x_all, transform)
-    ll <- tryCatch(ll_fn(p, gradient = TRUE), error = function(e) -Inf)
-    g <- attr(ll, "gradient")
-    if (!is.finite(ll) || is.null(g)) return(rep(0, length(x)))
-    g_free <- vapply(free_params, function(nm) if (nm %in% names(g)) g[[nm]] else 0, numeric(1))
-    is_log <- vapply(free_params, function(nm) (transform[[nm]] %||% "log") == "log", logical(1))
-    g_free[is_log] <- g_free[is_log] * unlist(p[free_params[is_log]])
-    -g_free
-  }
   p_init <- from_working(x0_all, transform)
   has_grad <- !is.null(attr(tryCatch(ll_fn(p_init, gradient = TRUE), error = function(e) NULL),
                             "gradient"))
@@ -261,13 +235,43 @@ fit_hawkesNet <- function(events,
   out$model <- list(mark_type = mark_type, T0 = T0,
                     T_end = T_end %||% max(events$times$t),
                     baseline = baseline, excitation = excitation,
-                    attachment = attachment, kernel = kernel)
+                    attachment = attachment, kernel = kernel,
+                    formula_rhs = formula_rhs, dots = list(...))
   out$transform <- transform
+  out$fixed <- fixed_params
   if (hessian) out$hessian <- fit$hessian
-  class(out) <- c("hawkesNet_fit", class(out))
+  class(out) <- c("ppnet_fit", "hawkesNet_fit", class(out))
 
-  print(paste0("Fitting took ", round((proc.time()-start_time)[3],2), " seconds"))
+  if (verbose) message("Fitting took ", round((proc.time() - start_time)[3], 2), " seconds")
 
   out
 }
 
+
+# Internal: negative log-likelihood and its analytic gradient on the working
+# scale, over the free parameters (the fixed ones are filled in from x0_all).
+.make_objective <- function(ll_fn, x0_all, free_params, transform) {
+  fn <- function(x) {
+    x_all <- x0_all
+    x_all[free_params] <- x
+    p <- from_working(x_all, transform)
+    ll <- tryCatch(ll_fn(p), error = function(e) -Inf)
+    if (!is.finite(ll)) return(1e100)
+    -ll
+  }
+  # d/dx = p * d/dp for log-transformed parameters. Parameters the likelihood
+  # does not use get gradient zero.
+  gr <- function(x) {
+    x_all <- x0_all
+    x_all[free_params] <- x
+    p <- from_working(x_all, transform)
+    ll <- tryCatch(ll_fn(p, gradient = TRUE), error = function(e) -Inf)
+    g <- attr(ll, "gradient")
+    if (!is.finite(ll) || is.null(g)) return(rep(0, length(x)))
+    g_free <- vapply(free_params, function(nm) if (nm %in% names(g)) g[[nm]] else 0, numeric(1))
+    is_log <- vapply(free_params, function(nm) (transform[[nm]] %||% "log") == "log", logical(1))
+    g_free[is_log] <- g_free[is_log] * unlist(p[free_params[is_log]])
+    -g_free
+  }
+  list(fn = fn, gr = gr)
+}

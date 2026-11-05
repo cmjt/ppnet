@@ -1,3 +1,5 @@
+#' Arguments for adding one event to a network
+#'
 #' @param net network object, the current network at time t_k
 #' @param new_nodes data.frame with at least column "id". Any additional
 #'                  columns will be treated as vertex attributes.
@@ -5,6 +7,7 @@
 #'                  columns will be treated as edge attributes.
 #' @param t_k numeric scalar, the event timestamp
 #' @name new-event-params
+#' @keywords internal
 NULL
 
 #' Common likelihood arguments

@@ -20,6 +20,7 @@ fit_hawkesNet(
   excitation = NULL,
   attachment = NULL,
   kernel = c("exp", "exp2"),
+  verbose = FALSE,
   ...
 )
 }
@@ -64,6 +65,8 @@ default to the \code{"none"} transform.}
 
 \item{kernel}{\code{"exp"} or \code{"exp2"}; see \code{\link[=loglik]{loglik()}}. With \code{"exp2"},
 \code{params_init} must contain \code{K_fast} and \code{beta_fast}, with \code{beta_fast > beta}.}
+
+\item{verbose}{Logical; if \code{TRUE}, report the fitting time with \code{\link[=message]{message()}}.}
 
 \item{...}{Additional arguments forwarded to the mark PMF / edge-probability
 functions used inside \code{loglik()}.}

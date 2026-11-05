@@ -1,14 +1,16 @@
-#' Title
+#' Build the network from an events object
 #'
-#' @param events
-#' @param net_init_fun
-#' @param net0
-#' @param net_step_fun
+#' Replays the events in order, adding each event's nodes and edges.
 #'
-#' @return
+#' @param events An events object created by [make_events()].
+#' @param net_init_fun Function returning the starting network (used when
+#'   `net0` is `NULL`).
+#' @param net0 Optional starting network.
+#' @param net_step_fun Function adding one event's nodes and edges.
+#' @param debug Logical; plot the network after each event and wait for Enter.
+#'
+#' @return The final `network` object (or `0` if there are no events).
 #' @export
-#'
-#' @examples
 create_net_from_events <- function(events,
                                    net_init_fun = net_init,
                                    net0 = NULL,
@@ -39,20 +41,18 @@ create_net_from_events <- function(events,
   return(net)
 }
 
-#' Title
+#' Convert a network with time attributes to an events object
 #'
 #' Preserves network attributes. Defaults to expecting "time" as edge / vertex
 #' attribute for event / birth time.
 #'
-#' @param net
-#' @param node_time_attr
-#' @param edge_time_attr
-#' @param ...
+#' @param net A `network` object with node birth times and edge times.
+#' @param node_time_attr Name of the vertex attribute holding birth times.
+#' @param edge_time_attr Name of the edge attribute holding edge times.
+#' @param ... Passed to [make_events()].
 #'
-#' @return
+#' @return An events object, as from [make_events()].
 #' @export
-#'
-#' @examples
 create_events_from_net <- function(net,
                                    node_time_attr = "time",
                                    edge_time_attr = "time",

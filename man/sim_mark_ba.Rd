@@ -13,6 +13,8 @@ sim_mark_ba(net, t_k, params, delta = 0.001, new_node_id = NULL)
 
 \item{params}{List containing at least beta_edges and delta.}
 
+\item{delta}{Degree offset: weights are proportional to degree + \code{delta}.}
+
 \item{new_node_id}{Optional character scalar to force the arriving node id
 (useful for tests). If NULL, generated from state.}
 }

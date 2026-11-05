@@ -2,7 +2,7 @@
 % Please edit documentation in R/utils.R
 \name{create_events_from_net}
 \alias{create_events_from_net}
-\title{Title}
+\title{Convert a network with time attributes to an events object}
 \usage{
 create_events_from_net(
   net,
@@ -10,6 +10,18 @@ create_events_from_net(
   edge_time_attr = "time",
   ...
 )
+}
+\arguments{
+\item{net}{A \code{network} object with node birth times and edge times.}
+
+\item{node_time_attr}{Name of the vertex attribute holding birth times.}
+
+\item{edge_time_attr}{Name of the edge attribute holding edge times.}
+
+\item{...}{Passed to \code{\link[=make_events]{make_events()}}.}
+}
+\value{
+An events object, as from \code{\link[=make_events]{make_events()}}.
 }
 \description{
 Preserves network attributes. Defaults to expecting "time" as edge / vertex

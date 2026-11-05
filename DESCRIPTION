@@ -14,7 +14,6 @@ Description: Simulates and fits Hawkes process models of network growth by
 License: MIT + file LICENSE
 URL: https://github.com/cmjt/ppnet
 Encoding: UTF-8
-LazyData: true
 Depends:
     R (>= 3.5.0),
     ernm
@@ -26,7 +25,10 @@ Imports:
 LinkingTo:
     Rcpp
 Suggests:
+    knitr,
+    rmarkdown,
     testthat (>= 3.0.0)
+VignetteBuilder: knitr
 Config/testthat/edition: 3
 Roxygen: list(markdown = TRUE)
 Config/roxygen2/version: 8.1.0

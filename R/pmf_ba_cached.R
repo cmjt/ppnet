@@ -36,7 +36,7 @@ edge_probs_ba <- function(net, t_k, beta_edges = 0.5, delta = 0.001) {
 # Paper BA (strict):
 # - Exactly one arriving node `arrival_k` (character scalar).
 # - Every edge must be between that new node and one old node in `old_nodes`.
-# - No endpoints outside {arrival_k} ∪ old_nodes.
+# - No endpoints outside {arrival_k} U old_nodes.
 # - No new-new or old-old edges.
 # - No duplicate (new, old) pairs within the event.
 #
@@ -71,7 +71,7 @@ validate_edges_ba <- function(edges_k, arrival_k, old_nodes) {
   # Any endpoint must be either the new node or an eligible old node
   endpoint_ok <- (i_is_new | i_is_old) & (j_is_new | j_is_old)
   if (any(!endpoint_ok)) {
-    stop("BA event has edge endpoint not in {arrival_k} ∪ old_nodes.", call. = FALSE)
+    stop("BA event has edge endpoint not in {arrival_k} or old_nodes.", call. = FALSE)
   }
 
   # Edges must be new-old: exactly one endpoint is the new node, the other is old

@@ -18,32 +18,6 @@ temporal_intensity_from_cache <- function(cache, mu, K, beta, kernel_density = F
   mu + K * scale * cache$S
 }
 
-#' Log-likelihood for a HawkesNet model
-#'
-#' Computes the log-likelihood for the observed event sequence under an
-#' exponential temporal Hawkes kernel and a chosen mark model (`mark_type`).
-#'
-#' @inheritParams hawkesnet-lik-args
-#' @param params Named list of model parameters on the natural scale. Must
-#'   contain `mu`, `K`, and `beta`, plus any mark parameters required by
-#'   `mark_type` (e.g. `beta_edges` for BA).
-#' @param net_init_fun Function to initialize the pre-event network if `net0` is
-#'   `NULL`. Defaults to `net_init`.
-#' @param net0 Optional initial network object to start recursion from.
-#' @param net_step_fun Function used to update the network after each event.
-#'   Defaults to `net_add_event`.
-#' @param formula_rhs String, the CS kernel formula
-#'
-#' @return A numeric scalar log-likelihood. Returns `-Inf` for invalid parameter
-#'   values or if the likelihood is undefined.
-#'
-#' @export
-#'
-#' @examples
-#' set.seed(1)
-#' params_true <- list(mu = 0.5, K = 0.5, beta = 0.5, beta_edges = 2)
-#' sim <- sim_hawkesNet(params = params_true, T_end = 10, mark_type = "ba")
-#' loglik(sim$ev, params_true, mark_type = "ba")
 # Internal: build a compiled log-likelihood function that reuses mark caches
 # (critical for optimizers that evaluate the objective many times).
 .build_loglik_fn <- function(
@@ -307,6 +281,12 @@ temporal_intensity_from_cache <- function(cache, mu, K, beta, kernel_density = F
 #'
 #' @return A numeric scalar log-likelihood. Returns `-Inf` for invalid parameter
 #'   values or if the likelihood is undefined.
+#'
+#' @examples
+#' set.seed(1)
+#' params_true <- list(mu = 0.5, K = 0.5, beta = 0.5, beta_edges = 2)
+#' sim <- sim_hawkesNet(params = params_true, T_end = 10, mark_type = "ba")
+#' loglik(sim$ev, params_true, mark_type = "ba")
 #'
 #' @export
 loglik <- function(

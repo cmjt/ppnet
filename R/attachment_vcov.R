@@ -14,8 +14,10 @@
 #' likelihood the two agree in large samples. The mark part shares no
 #' parameters with the time part, so the time parameters are left out.
 #'
-#' @param fit A fit from [fit_hawkesNet()] with an `attachment` spec, fitted
-#'   with `hessian = TRUE`. Not available with `random_effect = TRUE`.
+#' @param fit A fit from [fit_hawkesNet()] with an `attachment` spec (the
+#'   Hessian is computed if the fit has none). Not available with
+#'   `random_effect = TRUE`. [vcov()] on the fit gives the same standard
+#'   errors for pseudo-likelihood fits, together with the other parameters.
 #'
 #' @return The covariance matrix (working scale), with attributes `"se"`: the
 #'   standard errors on the working scale, and `"se_natural"`: the standard
@@ -29,7 +31,6 @@ attachment_vcov <- function(fit) {
   if (isTRUE(spec$random_effect)) {
     stop("attachment_vcov() is not available with the random effect.", call. = FALSE)
   }
-  if (is.null(fit$hessian)) stop("Fit with `hessian = TRUE`.", call. = FALSE)
 
   free <- intersect(names(fit$fit$par), attachment_param_names(spec))
   if (length(free) == 0L) stop("No free attachment parameters.", call. = FALSE)
@@ -41,7 +42,7 @@ attachment_vcov <- function(fit) {
   is_log <- vapply(free, function(nm) (tf[[nm]] %||% "log") == "log", logical(1))
   S[, is_log] <- sweep(S[, is_log, drop = FALSE], 2L, unlist(fit$par[free[is_log]]), `*`)
 
-  Hinv <- solve(fit$hessian[free, free, drop = FALSE])
+  Hinv <- solve(.fit_hessian(fit)[free, free, drop = FALSE])
   V <- Hinv %*% crossprod(S) %*% Hinv
   dimnames(V) <- list(free, free)
   se <- sqrt(diag(V))

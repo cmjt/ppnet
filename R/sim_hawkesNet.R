@@ -1,14 +1,18 @@
-#' Title
+#' Simulate a HawkesNet model
 #'
-#' @param params
-#' @param T_end
-#' @param T0
-#' @param delta
-#' @param mark_type
-#' @param return_ev
-#' @param debug
-#' @param net_init_fun
-#' @param net_step_fun
+#' Simulates event times by thinning and, at each event, its marks (new nodes
+#' and edges) from the chosen mark model.
+#'
+#' @param params Named list of parameters on the natural scale, as for
+#'   [loglik()].
+#' @param T_end End of the simulation window.
+#' @param T0 Start of the simulation window.
+#' @param delta Degree offset for the original BA mark models.
+#' @param mark_type One of `"ba"`, `"cs"`, `"ba_bip"`, `"cs_bip"`.
+#' @param return_ev Logical; return the simulated history as an events object.
+#' @param debug Logical; enable debug plotting.
+#' @param net_init_fun,net_step_fun Functions that create the starting network
+#'   and add one event to it.
 #' @param baseline Optional [baseline_spec()] for a time-varying baseline; its
 #'   coefficients go in `params`.
 #' @param excitation Optional [excitation_spec()] for size- and
@@ -28,12 +32,21 @@
 #' @param return_net Logical; also return the final `network` object. With
 #'   `attachment` it is built once at the end, which is slow for long
 #'   histories, so set `FALSE` when only `ev` is needed.
-#' @param ...
+#' @param verbose Logical; if `TRUE`, report the simulation time with
+#'   [message()].
+#' @param ... Passed to the mark simulator (e.g. `formula_rhs` for the CS
+#'   mark types).
 #'
-#' @return
+#' @return A list with `events` (the number of events `n` and their times
+#'   `t`), `accept_probs` (thinning acceptance probabilities), `ev` (an events
+#'   object, if `return_ev`) and `net` (the final network, if `return_net`).
+#'   [simulate()] on a fit calls this with the fitted parameters.
 #' @export
 #'
 #' @examples
+#' sim <- sim_hawkesNet(list(mu = 1, K = 0.5, beta = 1, beta_edges = 0.3,
+#'                           lambda_new = 0.7), T_end = 10, mark_type = "ba_bip")
+#' sim$events$n
 sim_hawkesNet <- function(
     params, T_end, T0 = 0,
     delta = 0.001,
@@ -48,6 +61,7 @@ sim_hawkesNet <- function(
     kernel = c("exp", "exp2"),
     random_effect_shape = Inf,
     return_net = TRUE,
+    verbose = FALSE,
     ...
 ) {
   start_time <- proc.time()
@@ -281,7 +295,7 @@ sim_hawkesNet <- function(
   if (!is.null(attachment)) net <- if (return_net) create_net_from_events(ev) else NULL
   out$net <- net
 
-  print(paste0("Simulation took ", round((proc.time()-start_time)[3],2), " seconds"))
+  if (verbose) message("Simulation took ", round((proc.time() - start_time)[3], 2), " seconds")
 
   out
 }

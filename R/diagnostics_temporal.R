@@ -151,7 +151,7 @@ plot_temporal_diag <- function(diag,
 
   if ("dt" %in% which) {
     dt <- diag$dt
-    hist(dt, breaks = "FD", xlab = "Δt", main = "Inter-arrival times", col = "grey90", border = "grey40")
+    hist(dt, breaks = "FD", xlab = "\u0394t", main = "Inter-arrival times", col = "grey90", border = "grey40")
   }
 
   if ("lambda" %in% which) {

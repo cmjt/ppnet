@@ -7,8 +7,10 @@
 attachment_vcov(fit)
 }
 \arguments{
-\item{fit}{A fit from \code{\link[=fit_hawkesNet]{fit_hawkesNet()}} with an \code{attachment} spec, fitted
-with \code{hessian = TRUE}. Not available with \code{random_effect = TRUE}.}
+\item{fit}{A fit from \code{\link[=fit_hawkesNet]{fit_hawkesNet()}} with an \code{attachment} spec (the
+Hessian is computed if the fit has none). Not available with
+\code{random_effect = TRUE}. \code{\link[=vcov]{vcov()}} on the fit gives the same standard
+errors for pseudo-likelihood fits, together with the other parameters.}
 }
 \value{
 The covariance matrix (working scale), with attributes \code{"se"}: the
