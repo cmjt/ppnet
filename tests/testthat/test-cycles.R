@@ -154,6 +154,13 @@ test_that("fit_hawkesNet recovers theta_cycles, with sandwich standard errors", 
   expect_equal(names(se), c("m", "beta_edges", "delta", "lambda_new", "theta_cycles"))
   expect_lt(abs(fit$par$theta_cycles - 0.6), 4 * se[["theta_cycles"]])
   expect_lt(se[["theta_cycles"]], 0.5)
+  # Natural scale: estimate * se for the log-transformed parameters, unchanged
+  # for theta_cycles (untransformed).
+  se_nat <- attr(V, "se_natural")
+  expect_equal(names(se_nat), names(se))
+  logp <- c("m", "beta_edges", "delta", "lambda_new")
+  expect_equal(se_nat[logp], unlist(fit$par[logp]) * se[logp])
+  expect_equal(se_nat[["theta_cycles"]], se[["theta_cycles"]])
   # Without 4-cycles it is a likelihood, so sandwich and Hessian agree roughly.
   sp0 <- attachment_spec(degree = TRUE, coffender_window = 10)
   fit0 <- suppressWarnings(fit_hawkesNet(

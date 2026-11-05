@@ -11,7 +11,10 @@ attachment_vcov(fit)
 with \code{hessian = TRUE}. Not available with \code{random_effect = TRUE}.}
 }
 \value{
-The covariance matrix, with attribute \code{"se"}: the standard errors.
+The covariance matrix (working scale), with attributes \code{"se"}: the
+standard errors on the working scale, and \code{"se_natural"}: the standard
+errors of the parameters themselves (delta method, \code{estimate * se} for
+log-transformed parameters), comparable with the estimates in \code{fit$par}.
 }
 \description{
 Robust (sandwich) covariance matrix \eqn{H^{-1} J H^{-1}} for the free

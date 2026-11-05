@@ -17,7 +17,10 @@
 #' @param fit A fit from [fit_hawkesNet()] with an `attachment` spec, fitted
 #'   with `hessian = TRUE`. Not available with `random_effect = TRUE`.
 #'
-#' @return The covariance matrix, with attribute `"se"`: the standard errors.
+#' @return The covariance matrix (working scale), with attributes `"se"`: the
+#'   standard errors on the working scale, and `"se_natural"`: the standard
+#'   errors of the parameters themselves (delta method, `estimate * se` for
+#'   log-transformed parameters), comparable with the estimates in `fit$par`.
 #' @export
 attachment_vcov <- function(fit) {
   if (!inherits(fit, "hawkesNet_fit")) stop("`fit` must come from fit_hawkesNet().", call. = FALSE)
@@ -41,6 +44,8 @@ attachment_vcov <- function(fit) {
   Hinv <- solve(fit$hessian[free, free, drop = FALSE])
   V <- Hinv %*% crossprod(S) %*% Hinv
   dimnames(V) <- list(free, free)
-  attr(V, "se") <- sqrt(diag(V))
+  se <- sqrt(diag(V))
+  attr(V, "se") <- se
+  attr(V, "se_natural") <- ifelse(is_log, unlist(fit$par[free]) * se, se)
   V
 }
