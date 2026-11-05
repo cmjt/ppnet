@@ -1,0 +1,342 @@
+---
+title: "The likelihoods in ppnet and hawkesNet"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{The likelihoods in ppnet and hawkesNet}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+This vignette writes out every log-likelihood that ppnet evaluates and sets
+each one beside its counterpart in the HawkesNet paper and in the hawkesNet R
+package (github.com/duncan-clark/hawkesNet, `main` branch, commit `6aa26b8`).
+The paper is
+
+> Clark, D. A., Kresin, C. J. and Jones-Todd, C. M. (2026). A General Marked
+> Point Process Framework For Self-Exciting Network Evolution. arXiv:2505.22659v2.
+> <https://arxiv.org/abs/2505.22659>
+
+and equation, example and definition numbers below refer to that version.
+Where the three differ, the difference is stated. Section 6 checks two of
+the formulas numerically against ppnet.
+
+Notation: events at times $t_1 < \dots < t_n$ in the window $[T_0, T)$,
+$H_t$ the history before $t$, and $m_i$ the mark of event $i$ (the nodes and
+edges it adds).
+
+## 1. The common decomposition
+
+All three use the marked point process log-likelihood (paper eq. 13) with
+the intensity written as a ground rate times a mark PMF (paper eqs. 3 and 2),
+$\lambda(t, m \mid H_t) = \lambda_g(t \mid H_t)\, q(m \mid t, H_t)$. Because
+$q$ sums to one over the admissible marks, the compensator needs only the
+ground rate (paper eq. 14), and
+
+$$
+\ell(\theta) = \underbrace{\sum_{i=1}^n \log q(m_i \mid t_i, H_{t_i})}_{\text{mark part}}
+ + \underbrace{\sum_{i=1}^n \log \lambda_g(t_i \mid H_{t_i}) - \int_{T_0}^{T} \lambda_g(t \mid H_t)\,dt}_{\text{time part}}
+\qquad \text{(paper eq. 15)}.
+$$
+
+In ppnet the two parts share no parameters, so `loglik(..., part = "time")`
+and `loglik(..., part = "marks")` return them separately and
+`fit_hawkesNet(..., part = )` fits them separately; the full log-likelihood
+is their sum. hawkesNet evaluates the product $\lambda_g q$ at each event
+and fits both parts together.
+
+**What counts as an event.** In ppnet an event is a recorded event (an event
+node in the bipartite data, or one arriving node in the unipartite data);
+two events at the same time are two events, and the later one in the data
+order sees the earlier one in its history. In hawkesNet an event is a
+distinct time at which nodes or edges appear (`get_times()`), so updates at
+the same time are merged into one event.
+
+## 2. The time part
+
+### Paper
+
+The ground rate is a Hawkes-type kernel whose jumps may depend on past marks
+and the graph (paper eq. 16), and for the examples the purely temporal
+exponential kernel
+$$
+\lambda_g(t) = \lambda_\emptyset + K \sum_{t_j < t} e^{-\beta (t - t_j)},
+\qquad
+\int_0^T \lambda_g(t)\,dt = \lambda_\emptyset T + \frac{K}{\beta} \sum_{j=1}^n \left(1 - e^{-\beta (T - t_j)}\right)
+\qquad \text{(paper eq. 17)}.
+$$
+$K/\beta$ is the branching ratio (expected direct offspring per event).
+
+### hawkesNet
+
+The same kernel, with `mu` $= \lambda_\emptyset$, `K` and `beta_overall`
+$= \beta$. Optionally the constant $\lambda_\emptyset$ is replaced by a
+kernel density estimate of the event times, fixed before fitting
+(`prepare_inhomogeneous_background()`, `fit_hawkesNet_inhom()`). The
+compensator is computed with the window length $T - T_0$ in place of $T$ in
+eq. 17, so it is correct when the window starts at 0.
+
+### ppnet
+
+$$
+\lambda_g(t) = \mu(t) + K \sum_{t_j < t} g_j\, e^{-\beta (t - t_j)}
+ + K_f \sum_{t_j < t} e^{-\beta_f (t - t_j)},
+$$
+with three optional extensions; with all of them off it is paper eq. 17 with
+`mu` $= \lambda_\emptyset$.
+
+* **Time-varying baseline** (`baseline_spec()`):
+  $\mu(t) = \mu \exp\{x(t)^\top b\}$, where $x(t)$ holds an optional linear
+  trend and Fourier terms $\cos(2\pi h t / P), \sin(2\pi h t / P)$ for each
+  period $P$ and harmonic $h$. Its integral is computed by Gauss-Legendre
+  quadrature. This is a parametric alternative to hawkesNet's KDE
+  background; its coefficients are estimated with the rest.
+* **Two-scale kernel** (`kernel = "exp2"`): a second, faster exponential
+  component ($K_f$ = `K_fast`, $\beta_f$ = `beta_fast` $> \beta$) with unit
+  jumps. Its compensator adds
+  $\frac{K_f}{\beta_f}\sum_j (1 - e^{-\beta_f (T - t_j)})$.
+* **Mark-dependent jumps** (`excitation_spec()`, bipartite data only):
+  $g_j = n_j^{\alpha} \exp\{\gamma\, h(c_j)\}$, with $n_j$ the number of
+  perps at event $j$, $c_j$ the number of distinct earlier events sharing a
+  perp with it (within `connectedness_window`, beyond
+  `connectedness_min_gap`) and $h = \log(1 + \cdot)$ or the identity. This
+  is a case of paper eq. 16, where the kernel may depend on past marks; the
+  paper's own examples do not use it. $\alpha = \gamma = 0$ gives $g_j = 1$.
+  The compensator's kernel term becomes
+  $\frac{K}{\beta}\sum_j g_j (1 - e^{-\beta (T - t_j)})$.
+* **Mark-path dependent jumps** (`excitation_spec(path_dependent = TRUE)`):
+  $c_j(t)$ also counts the later events before $t$ that share a perp with
+  event $j$, so an event's jump changes after it happens, as in the paper's
+  mark path dependent Hawkes process (Definition 4.1, eq. 7). Each change at
+  a later event $k$ is equivalent to an extra jump
+  $(g_j^{\text{new}} - g_j^{\text{old}})\, e^{-\beta (t_k - t_j)}$ at $t_k$,
+  so the likelihood stays an exact $O(n + \text{links})$ recursion.
+
+All terms are computed by the usual $O(n)$ recursion
+$S_k = e^{-\beta (t_k - t_{k-1})}(S_{k-1} + g_{k-1})$.
+
+## 3. The mark part in the paper
+
+**Example 1, preferential attachment (paper eq. 4).** Each event adds one
+node and $K_t \sim \text{Poisson}(m)$ edges (capped at $N_{t-}$) from it to
+existing nodes, chosen with probabilities
+$p_i = \delta_i / \sum_k \delta_k$, $\delta_i = e^{-\tau (t - t_i)}\, d_i$
+($d_i$ the degree of node $i$ just before $t$). Sampling without replacement
+is approximated by independent Bernoulli terms:
+$$
+q(m_t) = P(K_t \mid m) \prod_{i=1}^{N_{t-}} p_i^{e_i} (1 - p_i)^{1 - e_i}.
+$$
+
+**Example 2, change statistics (paper eqs. 5, 6).** $N^{new}_t \sim
+\text{Poisson}(\lambda)$ new nodes, $K_t \sim \text{Poisson}(m)$ edges,
+chosen from the candidates $C_t$ (pairs of a new and an existing node) with
+weights
+$w_{ij} = e^{-\tau (t - t_i)}\, \text{logit}^{-1}(\theta^\top C_{ij})$, with
+$t_i$ the time of node $i$'s most recent activity and $C_{ij}$ the change
+statistics of adding edge $(i, j)$. With $p^{CS}_{ij}$ the normalised weight,
+$$
+q(m_t) = \text{Poisson}(N^{new}_t; \lambda)\, \text{Poisson}(K_t; m)
+ \prod_{(i,j) \in C_t} (p^{CS}_{ij})^{e_{ij}} (1 - p^{CS}_{ij})^{1 - e_{ij}}.
+$$
+
+## 4. The mark part in hawkesNet
+
+**`PMF_mark_BA`** follows Example 1 with these differences:
+
+* $t_i$ is node $i$'s entrance (birth) time.
+* With `truncation`, only the most recent nodes (by entrance, or by latest
+  activity with `mark_decay = "activity"`) are candidates, but the
+  denominator $\sum_k \delta_k$ still runs over all existing nodes.
+* $K_t$ is not capped in the density: the term is
+  $\text{Poisson}(K_{obs}; m)$.
+* A node with no edges yet has $\delta_i = 0$; a link to it gets probability
+  `.Machine$double.eps` (about $2 \times 10^{-16}$) instead of 0.
+* While the network has at most 2 nodes only the Poisson term is used.
+
+**`PMF_mark_CS`** differs from Example 2 more:
+
+* The Bernoulli probabilities are not normalised:
+  $p_{ij} = \text{logit}^{-1}(\theta^\top C_{ij})\, e^{-\tau \Delta_{ij}}$.
+* There is no $\text{Poisson}(K_t; m)$ term unless the parameters contain
+  `m`; if they do, the term is added on top of the Bernoulli product (so the
+  number of edges enters twice).
+* With the default `mark_decay = "node_entrance"`, $\Delta_{ij}$ is the time
+  since the older node's entrance; with `"activity"`, the time since the more
+  recent of the two endpoints' latest activity (the paper's choice uses
+  node $i$'s most recent activity).
+* Candidates are all pairs among the `truncation` most recent nodes (both
+  may be old) unless `growth_only = TRUE`, which keeps pairs with a new node.
+* Change statistics come from ernm on the network with the event's new nodes
+  added and none of its edges, so statistics that need two of the new edges
+  (e.g. triangles through a new node) are 0.
+* The node term is $\text{Poisson}(N^{new}_t; \lambda)$ (`node_lambda`).
+* When the parameters have no `m`, R's partial matching makes `params$m`
+  return `mu`, which switches the Poisson term on with mean $\mu$ (issue
+  #11 on github.com/duncan-clark/hawkesNet). Until it is fixed, a fixed
+  parameter whose name starts with "m" (e.g. `m_off`) avoids it.
+
+Both PMFs can also include a multinomial term for categorical attributes of
+new nodes (`vertex_categorical`).
+
+## 5. The mark part in ppnet
+
+ppnet has the unipartite models of the paper (`mark_type = "ba"`, `"cs"`)
+and bipartite event-perp models (`"ba_bip"`, `"cs_bip"`, and `"ba_bip"` with
+an `attachment_spec()`), which the paper does not cover.
+
+### Unipartite
+
+**`"ba"`.** Each event adds exactly one node. Existing node $i$ is joined
+with probability
+$$
+p_i = \frac{w_i}{\sum_k w_k}, \qquad w_i = (2 d_i + \delta)\, e^{-\beta_e (t - b_i)},
+$$
+with $b_i$ its birth time and $\delta = 0.001$ (fixed), as independent
+Bernoulli terms. The factor 2 (from `sna::degree()` on an undirected
+network, as in hawkesNet) cancels except against $\delta$. There is no
+$\text{Poisson}(K_t; m)$ term and no $m$: the probabilities sum to one, so
+about one edge per event is expected.
+
+**`"cs"`.** $M_t \sim \text{Poisson}$(`node_lambda`) new nodes; candidates
+are the pairs of a new node and one of the `truncation` most recent
+existing nodes;
+$p = \text{logit}^{-1}(\theta^\top C)\, e^{-\beta_e (t - b_{old})}$
+(not normalised), with $b_{old}$ the existing node's birth time and change
+statistics from ernm (parameters `CS_<statistic>`). There is no
+$\text{Poisson}(K_t; m)$ term.
+
+### Bipartite
+
+Each event adds one event node, $N^{new}$ new perps (each joined to it) and
+edges to some of the existing ("old") perps. The mark PMF is
+$P(\text{which old perps join})\, P(N^{new} \mid \text{old})$.
+
+**`"ba_bip"` (original).** Old perp $v$ joins with probability
+$p_v = w_v / \sum_u w_u$, $w_v = (2 d_v + \delta) e^{-\beta_e (t - b_v)}$,
+$d_v$ the number of events it has attended, $b_v$ its first appearance,
+$\delta = 0.001$; $N^{new} \sim \text{Poisson}(\lambda_{new})$. As for
+`"ba"`, about one old perp is expected per event.
+
+**`"cs_bip"`.** Old perp $v$ joins with probability
+$\text{logit}^{-1}(\theta^\top C_v)\, e^{-\beta_e (t - b_v)}$, change
+statistics from ernm; $N^{new} \sim \text{Poisson}(\lambda_{new})$.
+
+**`"ba_bip"` with `attachment_spec()`.** The main bipartite model. Old perp
+$v$ has weight
+$$
+\log w_v = \log(d_v + \delta) + \theta\, x_v + \theta_p\, y_v + \theta_r\, r_v
+ - \beta_e (t_k - \ell_v),
+$$
+with $\ell_v$ the time of $v$'s latest event (not its first), and
+change statistics from $v$'s own history (each term optional):
+$x_v = h$(distinct co-offenders, `coffenders`),
+$y_v = h$(3-paths $k - v - j - u$, i.e. co-offenders with multiplicity,
+`paths`), both within `coffender_window`, and $r_v = h$(own events within
+the episode gap, `recent`). It joins independently with probability
+$$
+p_v = 1 - \exp(-m\, w_v / W), \qquad W = \sum_u w_u,
+$$
+so `m` is close to the expected number of returning perps when the $p_v$ are
+small: unlike the original BA models, the number of returning perps is a
+parameter, as $m$ is in the paper. The new perps are $\text{Poisson}$ or
+negative binomial (`new_perps`), and with `min_perps = 1` an event with no
+old perp has $1 + N^{new}$ perps with its own rate (`lambda_new0`).
+
+* **Random effect** (`random_effect = TRUE`): $p_v = 1 - \exp(-u_v m w_v /
+  W)$ with $u_v \sim \text{Gamma}(1/\sigma^2, 1/\sigma^2)$, integrated out
+  perp by perp: in closed form,
+  $(1 + \sigma^2 Q_v)^{-1/\sigma^2}$ with $Q_v = \sum_k m w_{vk}/W_k$, for a
+  perp that never returns, and by Gauss-Legendre quadrature in $\log u_v$
+  otherwise. This is a marginal likelihood over the perps' propensities.
+* **4-cycles** (`cycles = TRUE`): joins at the same event depend on each
+  other through $z_{vk}$, the 4-cycles $k - v - j - u - k$ that $v$ joining
+  closes (past events $j$ shared with another old perp $u$ at $k$). Each
+  old perp is scored by its full conditional given the others,
+  $\text{logit}\, P(v \mid \text{rest}) = \log(e^{m w_v / W} - 1) +
+  \theta_c z_{vk} (+ \theta_{cs} z^s_{vk})$, and the product of these is a
+  **pseudo-likelihood**, not a likelihood; with the 4-cycle coefficients at 0
+  it is the model above exactly. Standard errors come from the sandwich
+  (`attachment_vcov()`, or `vcov()` on the fit), and `logLik()`, `AIC()` and
+  `anova()` refuse these fits.
+
+All these are exact Bernoulli products over the old perps (no
+without-replacement approximation is involved, as joins are independent by
+construction), evaluated in time linear in events and perp appearances.
+
+## 6. Two checks
+
+The time part of a plain fit is paper eq. 17. Computed directly:
+
+```{r}
+library(ppnet)
+set.seed(1)
+p <- list(mu = 1, K = 0.5, beta = 1.2, beta_edges = 0.3, lambda_new = 0.7)
+ev <- sim_hawkesNet(p, T_end = 30, mark_type = "ba_bip")$ev
+t <- ev$times$t
+T_end <- 30
+
+lambda_at <- vapply(seq_along(t), function(i) {
+  p$mu + p$K * sum(exp(-p$beta * (t[i] - t[seq_len(i - 1)])))
+}, numeric(1))
+eq17 <- sum(log(lambda_at)) -
+  (p$mu * T_end + p$K / p$beta * sum(1 - exp(-p$beta * (T_end - t))))
+
+c(eq17 = eq17, ppnet = loglik(ev, p, mark_type = "ba_bip", T_end = T_end, part = "time"))
+```
+
+The attachment model's mark part, computed directly for a model with degree
+and recency only (each old perp's weight, then the Bernoulli terms and the
+Poisson term for new perps), against ppnet:
+
+```{r}
+spec <- attachment_spec()                    # degree and recency
+pm <- list(m = 0.8, beta_edges = 0.3, delta = 0.5, lambda_new = 0.7)
+
+ev_nodes <- ev$nodes
+ev_edges <- ev$edges
+role <- setNames(ev_nodes$role, ev_nodes$id)
+ll <- 0
+deg <- c(); last <- c()                      # by perp id
+for (k in seq_len(nrow(ev$times))) {
+  id_k <- ev$times$event_id[k]
+  t_k <- ev$times$t[k]
+  e_k <- ev_edges[ev_edges$event_id == id_k, ]
+  perps_k <- unique(c(e_k$i, e_k$j)[role[as.character(c(e_k$i, e_k$j))] == "perp"])
+  old <- names(deg)
+  if (length(old)) {
+    w <- (deg + pm$delta) * exp(-pm$beta_edges * (t_k - last))
+    pj <- 1 - exp(-pm$m * w / sum(w))
+    joined <- old %in% as.character(perps_k)
+    ll <- ll + sum(log(ifelse(joined, pj, 1 - pj)))
+  }
+  new <- setdiff(as.character(perps_k), old)
+  ll <- ll + dpois(length(new), pm$lambda_new, log = TRUE)
+  for (v in as.character(perps_k)) {
+    deg[v] <- if (v %in% names(deg)) deg[v] + 1 else 1
+    last[v] <- t_k
+  }
+}
+c(direct = ll, ppnet = loglik(ev, pm, mark_type = "ba_bip", attachment = spec,
+                              T_end = T_end, part = "marks"))
+```
+
+The package tests (`tests/testthat/`) check every likelihood above against
+an independent brute-force calculation in the same way, including the
+excitation, path-dependent, 3-path, 4-cycle, episode-gap and random-effect
+terms, and their analytic gradients against finite differences.
+
+## 7. Summary
+
+| | Paper | hawkesNet (`main`) | ppnet |
+|---|---|---|---|
+| Event | update time | distinct time (ties merged) | recorded event (ties kept) |
+| Ground rate | $\lambda_\emptyset + K\sum e^{-\beta\Delta}$ (eq. 17), marks allowed (eq. 16) | eq. 17; or KDE background | eq. 17, plus log-linear seasonal/trend baseline, fast second kernel, size/connectedness jumps, path-dependent jumps |
+| Compensator | closed form | closed form, window assumed to start at 0 | closed form (quadrature for the baseline) |
+| BA mark | Poisson($m$) edges $\times$ normalised degree-decay Bernoullis | as paper; decay from birth; truncation; uncapped Poisson | `"ba"`: normalised $(2d+\delta)$-decay Bernoullis, no $m$ |
+| CS mark | Poisson nodes $\times$ Poisson($m$) edges $\times$ normalised logistic-decay Bernoullis | unnormalised Bernoullis; Poisson nodes; no $m$ term unless given (then added on top); `m`/`mu` partial-match bug | `"cs"`: unnormalised Bernoullis, Poisson nodes, new-old candidates, no $m$ |
+| Bipartite | — | — (`pre-jasa-main` branch only) | `"ba_bip"`, `"cs_bip"`; attachment model with $m$, own-history change statistics, NB new perps, random effect, 4-cycles (pseudo-likelihood) |
+| Optimiser | Nelder–Mead | Nelder–Mead (default), numerical | BFGS with analytic gradients |
+| Standard errors | Hessian or parametric bootstrap | Hessian | Hessian (delta method to the natural scale); sandwich for pseudo-likelihood |
