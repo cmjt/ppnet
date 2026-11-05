@@ -27,7 +27,8 @@ stored as \code{x$events}.}
 
 \item{type}{Which diagnostic plot to produce. Temporal: \code{count}, \code{dt}, \code{lambda},
 \code{tau_hist}, \code{tau_qq}. Network: \code{size}, \code{edges_vs_nodes}, \code{degree_hist},
-\code{degree_ccdf}.}
+\code{degree_ccdf}; for bipartite event-perp data \code{size}, \code{group_size},
+\code{returning}, \code{attendance} and \code{attendance_ccdf} (see \code{\link[=diag_network]{diag_network()}}).}
 
 \item{params}{Optional named list of parameters. Required for \code{lambda},
 \code{tau_hist}, and \code{tau_qq}.}

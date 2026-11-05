@@ -9,7 +9,9 @@
 #' @param net_step_fun Function adding one event's nodes and edges.
 #' @param debug Logical; plot the network after each event and wait for Enter.
 #'
-#' @return The final `network` object (or `0` if there are no events).
+#' @return The final `network` object (or `0` if there are no events). For
+#'   bipartite event-perp data it also has class `"ppnet_net"`, so `plot()`
+#'   tells events and perps apart (see [plot.ppnet_net()]).
 #' @export
 create_net_from_events <- function(events,
                                    net_init_fun = net_init,
@@ -38,7 +40,16 @@ create_net_from_events <- function(events,
     }
   }
 
-  return(net)
+  .as_ppnet_net(net)
+}
+
+# Internal: mark a network with event and perp roles as an event-perp network.
+.as_ppnet_net <- function(net) {
+  role <- network::get.vertex.attribute(net, "role")
+  if (!is.null(role) && all(c("event", "perp") %in% role) && !inherits(net, "ppnet_net")) {
+    class(net) <- c("ppnet_net", class(net))
+  }
+  net
 }
 
 #' Convert a network with time attributes to an events object

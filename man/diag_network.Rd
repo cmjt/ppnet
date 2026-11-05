@@ -29,9 +29,20 @@ mean_degree, max_degree.}
 \item{deg_final}{Degree vector at the final network state.}
 \item{ccdf_final}{CCDF data frame for final degrees.}
 }
+For a bipartite history instead: \code{bipartite = TRUE}, \code{series} (one row per
+event, after it: \code{t}, \code{events_n}, \code{perps_n}, \code{edges_n}, \code{group_size},
+\code{returning}, \code{new}), \code{group_size} and \code{attendance} (per event and per
+perp) and \code{ccdf_attendance}.
 }
 \description{
 Replays the event sequence and tracks network size and simple network
 summaries over time. This is kernel-agnostic as long as \code{net_step_fun}
 updates the network using \verb{(net, new_nodes, new_edges, t_k)}.
+}
+\details{
+Bipartite event-perp histories (node roles \code{"event"} and \code{"perp"}) are
+summarised separately for events and perps, from the event walk used by
+\code{\link[=event_summary]{event_summary()}} (fast, no network objects): group sizes (perps per
+event), returning and new perps per event, and perps' attendance (events
+per perp), since event-node and perp degrees measure different things.
 }

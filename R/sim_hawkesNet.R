@@ -402,7 +402,7 @@ sim_hawkesNet <- function(
   }
 
   if (!is.null(attachment)) net <- if (return_net) create_net_from_events(ev) else NULL
-  out$net <- net
+  out$net <- if (inherits(net, "network")) .as_ppnet_net(net) else net
 
   if (verbose) message("Simulation took ", round((proc.time() - start_time)[3], 2), " seconds")
 

@@ -35,6 +35,12 @@
 #' summaries over time. This is kernel-agnostic as long as `net_step_fun`
 #' updates the network using `(net, new_nodes, new_edges, t_k)`.
 #'
+#' Bipartite event-perp histories (node roles `"event"` and `"perp"`) are
+#' summarised separately for events and perps, from the event walk used by
+#' [event_summary()] (fast, no network objects): group sizes (perps per
+#' event), returning and new perps per event, and perps' attendance (events
+#' per perp), since event-node and perp degrees measure different things.
+#'
 #' @param events An events object created by `make_events()`.
 #' @param net_init_fun Function that returns an initial `network` object.
 #' @param net0 Optional initial network object (overrides `net_init_fun()`).
@@ -48,6 +54,10 @@
 #'   \item{deg_final}{Degree vector at the final network state.}
 #'   \item{ccdf_final}{CCDF data frame for final degrees.}
 #' }
+#' For a bipartite history instead: `bipartite = TRUE`, `series` (one row per
+#' event, after it: `t`, `events_n`, `perps_n`, `edges_n`, `group_size`,
+#' `returning`, `new`), `group_size` and `attendance` (per event and per
+#' perp) and `ccdf_attendance`.
 #' @export
 diag_network <- function(events,
                          net_init_fun = net_init,
@@ -61,6 +71,18 @@ diag_network <- function(events,
 
   t <- as.numeric(events$times$t)
   n_events <- length(t)
+
+  if (.is_bipartite(events) && is.null(net0) && identical(net_init_fun, net_init) &&
+      identical(net_step_fun, net_add_event)) {
+    s <- event_summary(events)
+    hp <- .history_perps(events)
+    attendance <- as.vector(table(unlist(Map(c, hp$old, hp$new), use.names = FALSE)))
+    series <- data.frame(t = t, events_n = seq_len(n_events), perps_n = cumsum(s$n_new),
+                         edges_n = cumsum(s$n_perps), group_size = s$n_perps,
+                         returning = s$n_old, new = s$n_new)
+    return(list(bipartite = TRUE, series = series, group_size = s$n_perps,
+                attendance = attendance, ccdf_attendance = .ccdf(attendance)))
+  }
 
   arrivals <- nodes_by_event(events)
   edges <- edges_by_event(events)
@@ -110,7 +132,11 @@ diag_network <- function(events,
 #'
 #' @param diag Output of `diag_network()`.
 #' @param which Character vector of plots to show. Any of:
-#'   `"size"`, `"edges_vs_nodes"`, `"degree_hist"`, `"degree_ccdf"`.
+#'   `"size"`, `"edges_vs_nodes"`, `"degree_hist"`, `"degree_ccdf"`. For a
+#'   bipartite history: `"size"` (events and perps over time),
+#'   `"group_size"` (perps per event), `"returning"` (returning perps per event
+#'   over time), `"attendance"` (events per perp) and `"attendance_ccdf"`;
+#'   `"degree_hist"` and `"degree_ccdf"` then mean the attendance plots.
 #' @param ask Logical; if `TRUE`, prompt between plots.
 #' @param loglog Logical; for `"degree_ccdf"`, plot on log-log axes.
 #' @export
@@ -119,7 +145,14 @@ plot_network_diag <- function(diag,
                               ask = FALSE,
                               loglog = TRUE) {
   if (is.null(diag) || is.null(diag$series)) stop("plot_network_diag(): invalid `diag`.", call. = FALSE)
-
+  if (isTRUE(diag$bipartite)) {
+    if (missing(which)) which <- c("size", "group_size", "returning", "attendance_ccdf")
+    return(.plot_bip_diag(diag, which, ask, loglog))
+  }
+  bip_only <- setdiff(which, c("size", "edges_vs_nodes", "degree_hist", "degree_ccdf"))
+  if (length(bip_only)) {
+    stop("Only for bipartite event-perp data: ", paste(bip_only, collapse = ", "), call. = FALSE)
+  }
   ser <- diag$series
   which <- unique(which)
 
@@ -167,5 +200,40 @@ plot_network_diag <- function(diag,
     }
   }
 
+  invisible(NULL)
+}
+
+# Internal: plots of a bipartite diag_network().
+.plot_bip_diag <- function(diag, which, ask, loglog) {
+  which <- unique(sub("^degree_hist$", "attendance", sub("^degree_ccdf$", "attendance_ccdf", which)))
+  bad <- setdiff(which, c("size", "group_size", "returning", "attendance", "attendance_ccdf"))
+  if (length(bad)) stop("Not a bipartite network plot: ", paste(bad, collapse = ", "), call. = FALSE)
+  ser <- diag$series
+  old_ask <- par(ask = ask)
+  on.exit(par(old_ask), add = TRUE)
+  bars <- function(x, main, xlab) {
+    tab <- table(factor(x, levels = seq.int(min(x), max(x))))
+    graphics::barplot(tab / sum(tab), main = main, xlab = xlab, ylab = "proportion",
+                      col = "grey80", border = "grey40")
+  }
+  if ("size" %in% which) {
+    plot(ser$t, ser$perps_n, type = "l", xlab = "time", ylab = "count",
+         ylim = c(0, max(ser$perps_n, ser$events_n)), main = "Events and perps over time")
+    lines(ser$t, ser$events_n, lty = 2)
+    legend("topleft", legend = c("# perps", "# events"), lty = c(1, 2), bty = "n")
+  }
+  if ("group_size" %in% which) bars(diag$group_size, "Group size", "perps per event")
+  if ("returning" %in% which) {
+    plot(ser$t, ser$returning, pch = 16, cex = 0.4, col = "grey50", xlab = "time",
+         ylab = "returning perps", main = "Returning perps per event")
+    k <- max(1L, round(nrow(ser) / 20))
+    lines(ser$t, stats::filter(ser$returning, rep(1 / (2 * k + 1), 2 * k + 1)), lwd = 2)
+  }
+  if ("attendance" %in% which) bars(diag$attendance, "Attendance", "events per perp")
+  if ("attendance_ccdf" %in% which) {
+    cc <- diag$ccdf_attendance
+    plot(cc$k, cc$ccdf, log = if (isTRUE(loglog)) "xy" else "", pch = 16, xlab = "k",
+         ylab = "P(attendance >= k)", main = "Attendance CCDF")
+  }
   invisible(NULL)
 }

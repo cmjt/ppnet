@@ -25,7 +25,9 @@ create_net_from_events(
 \item{debug}{Logical; plot the network after each event and wait for Enter.}
 }
 \value{
-The final \code{network} object (or \code{0} if there are no events).
+The final \code{network} object (or \code{0} if there are no events). For
+bipartite event-perp data it also has class \code{"ppnet_net"}, so \code{plot()}
+tells events and perps apart (see \code{\link[=plot.ppnet_net]{plot.ppnet_net()}}).
 }
 \description{
 Replays the events in order, adding each event's nodes and edges.

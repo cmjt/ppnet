@@ -1,7 +1,8 @@
 # plot_methods.R
 
 .temporal_types <- c("count", "dt", "lambda", "tau_hist", "tau_qq")
-.network_types  <- c("size", "edges_vs_nodes", "degree_hist", "degree_ccdf")
+.network_types  <- c("size", "edges_vs_nodes", "degree_hist", "degree_ccdf",
+                    "group_size", "returning", "attendance", "attendance_ccdf")
 
 .is_events <- function(x) {
   inherits(x, "events") || (!is.null(x$times) && is.data.frame(x$times) && "t" %in% names(x$times))
@@ -12,7 +13,8 @@
 #' @param x An events object created by `make_events()`.
 #' @param type Which diagnostic plot to produce. Temporal: `count`, `dt`, `lambda`,
 #'   `tau_hist`, `tau_qq`. Network: `size`, `edges_vs_nodes`, `degree_hist`,
-#'   `degree_ccdf`.
+#'   `degree_ccdf`; for bipartite event-perp data `size`, `group_size`,
+#'   `returning`, `attendance` and `attendance_ccdf` (see [diag_network()]).
 #' @param params Optional named list of parameters. Required for `lambda`,
 #'   `tau_hist`, and `tau_qq`.
 #' @param T_end Optional end time for temporal diagnostics.

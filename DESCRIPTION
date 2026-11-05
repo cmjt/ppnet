@@ -18,10 +18,13 @@ Depends:
     R (>= 3.5.0),
     ernm
 Imports:
+    graphics,
+    grDevices,
     network,
     Rcpp,
     sna,
-    stats
+    stats,
+    utils
 LinkingTo:
     Rcpp
 Suggests:

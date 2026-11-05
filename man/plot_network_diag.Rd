@@ -15,7 +15,11 @@ plot_network_diag(
 \item{diag}{Output of \code{diag_network()}.}
 
 \item{which}{Character vector of plots to show. Any of:
-\code{"size"}, \code{"edges_vs_nodes"}, \code{"degree_hist"}, \code{"degree_ccdf"}.}
+\code{"size"}, \code{"edges_vs_nodes"}, \code{"degree_hist"}, \code{"degree_ccdf"}. For a
+bipartite history: \code{"size"} (events and perps over time),
+\code{"group_size"} (perps per event), \code{"returning"} (returning perps per event
+over time), \code{"attendance"} (events per perp) and \code{"attendance_ccdf"};
+\code{"degree_hist"} and \code{"degree_ccdf"} then mean the attendance plots.}
 
 \item{ask}{Logical; if \code{TRUE}, prompt between plots.}
 
