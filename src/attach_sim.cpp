@@ -158,14 +158,12 @@ SEXP attach_sim_new(List params, bool use_degree, bool use_cof, bool use_paths, 
   return XPtr<AttachSim>(sim, true);
 }
 
-// One event at time t: returns the 0-based indices of old perps that joined
-// and the number of new perps (which get the next indices).
-// [[Rcpp::export]]
-List attach_sim_step(SEXP ptr, double t) {
-  XPtr<AttachSim> xp(ptr);
-  AttachSim& S = *xp;
+// The steps of one event at time t. prepare() moves the state to t (expired
+// ties, 3-paths and recent events); draw_joins() and draw_new() draw the
+// event's old and new perps; commit() records them. Observed events (a
+// history to simulate on from) go through prepare() and commit() only.
+static void prepare(AttachSim& S, double t) {
   const int n_old = S.u.size();
-
   // Keep exp(beta_e (last - t_ref)) bounded by moving the reference time.
   if (S.beta_e * (t - S.t_ref) > 300.0) {
     S.t_ref = t;
@@ -217,7 +215,10 @@ List attach_sim_step(SEXP ptr, double t) {
     S.rec_queue.pop();
   }
   for (size_t a = 0; a < changed.size(); ++a) S.update(changed[a]);
+}
 
+static std::vector<int> draw_joins(AttachSim& S, double t) {
+  const int n_old = S.u.size();
   // Old perps: Poisson(m sum u w / W) hits spread in proportion to u w.
   std::vector<int> joined;
   if (n_old > 0) {
@@ -280,9 +281,24 @@ List attach_sim_step(SEXP ptr, double t) {
     for (int v = 0; v < n_old; ++v) if (in[v]) joined.push_back(v);
   }
 
+  return joined;
+}
+
+static int draw_new(AttachSim& S, const std::vector<int>& joined) {
   // New perps, given how many old ones joined.
   const bool shifted = S.min_one && joined.empty();
-  const int n_new = (int)shifted + (int)S.draw_count(shifted ? S.lambda_new0 : S.lambda_new);
+  return (int)shifted + (int)S.draw_count(shifted ? S.lambda_new0 : S.lambda_new);
+}
+
+static void commit(AttachSim& S, double t, const std::vector<int>& joined, int n_new) {
+  const int n_old = S.u.size();
+  std::vector<int> changed;
+  auto touch = [&](int v) {
+    if (S.stamp[v] != S.stamp_id) {
+      S.stamp[v] = S.stamp_id;
+      changed.push_back(v);
+    }
+  };
   for (int a = 0; a < n_new; ++a) {
     S.u.push_back(std::isfinite(S.random_effect_shape)
                     ? R::rgamma(S.random_effect_shape, 1.0 / S.random_effect_shape) : 1.0);
@@ -300,7 +316,6 @@ List attach_sim_step(SEXP ptr, double t) {
   // Attendance, recency and ties among everyone at the event.
   std::vector<int> perps(joined);
   for (int a = 0; a < n_new; ++a) perps.push_back(n_old + a);
-  changed.clear();
   ++S.stamp_id;
   for (size_t a = 0; a < perps.size(); ++a) {
     const int v = perps[a];
@@ -332,6 +347,33 @@ List attach_sim_step(SEXP ptr, double t) {
     }
   }
   for (size_t a = 0; a < changed.size(); ++a) S.update(changed[a]);
+}
 
+// One simulated event at time t: returns the 0-based indices of old perps
+// that joined and the number of new perps (which get the next indices).
+// [[Rcpp::export]]
+List attach_sim_step(SEXP ptr, double t) {
+  XPtr<AttachSim> xp(ptr);
+  AttachSim& S = *xp;
+  prepare(S, t);
+  const std::vector<int> joined = draw_joins(S, t);
+  const int n_new = draw_new(S, joined);
+  commit(S, t, joined, n_new);
   return List::create(_["joined"] = wrap(joined), _["n_new"] = n_new);
+}
+
+// An observed event at time t, with the 0-based indices of the old perps at
+// it and its number of new perps (in the order they get indices): updates the
+// state as a simulated event would, without drawing.
+// [[Rcpp::export]]
+void attach_sim_observe(SEXP ptr, double t, IntegerVector joined, int n_new) {
+  XPtr<AttachSim> xp(ptr);
+  AttachSim& S = *xp;
+  prepare(S, t);
+  const int n_old = S.u.size();
+  std::vector<int> j(joined.begin(), joined.end());
+  for (size_t a = 0; a < j.size(); ++a) {
+    if (j[a] < 0 || j[a] >= n_old) stop("attach_sim_observe(): perp index out of range.");
+  }
+  commit(S, t, j, n_new);
 }

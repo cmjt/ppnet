@@ -9,6 +9,10 @@ attach_sim_step <- function(ptr, t) {
     .Call(`_ppnet_attach_sim_step`, ptr, t)
 }
 
+attach_sim_observe <- function(ptr, t, joined, n_new) {
+    invisible(.Call(`_ppnet_attach_sim_observe`, ptr, t, joined, n_new))
+}
+
 attach_history_cpp <- function(t, node_ptr, edge_ptr, edge_i, edge_j, focal, n_nodes, window, cycles = FALSE, gap = 0.0) {
     .Call(`_ppnet_attach_history_cpp`, t, node_ptr, edge_ptr, edge_i, edge_j, focal, n_nodes, window, cycles, gap)
 }

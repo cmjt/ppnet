@@ -329,22 +329,43 @@ compile_logpmf_attach <- function(events, spec) {
   sim <- NULL
   perp_ids <- character(0)   # perp id by C++ index
   n_ids <- 0L                # node ids handed out so far (events and perps)
+  id_prefix <- ""            # "s" after a history, so new ids cannot clash
 
-  function(net, t_k, params, ...) {
-    if (is.null(sim)) {
-      if (isTRUE(spec$random_effect)) {
-        fv <- params[["random_effect_var"]]
-        random_effect_shape <- if (fv > 0) 1 / fv else Inf
-      }
-      sim <<- attach_sim_new(params, spec$degree, spec$coffenders, isTRUE(spec$paths),
-                             isTRUE(spec$cycles), isTRUE(spec$recent), spec$episode_gap %||% 0,
-                             spec$coffender_scale == "log1p", spec$coffender_window,
-                             spec$new_perps == "negbin", spec$min_perps == 1L,
-                             random_effect_shape, t_k)
+  start <- function(params, t0) {
+    if (isTRUE(spec$random_effect)) {
+      fv <- params[["random_effect_var"]]
+      random_effect_shape <- if (fv > 0) 1 / fv else Inf
     }
+    sim <<- attach_sim_new(params, spec$degree, spec$coffenders, isTRUE(spec$paths),
+                           isTRUE(spec$cycles), isTRUE(spec$recent), spec$episode_gap %||% 0,
+                           spec$coffender_scale == "log1p", spec$coffender_window,
+                           spec$new_perps == "negbin", spec$min_perps == 1L,
+                           random_effect_shape, t0)
+  }
+
+  # With `history` (an events object), load the observed events into the
+  # state instead of simulating: their perps' attendance, recency,
+  # co-offenders and shared events. Random effects of history perps are
+  # drawn from their distribution, not conditioned on their history.
+  function(net, t_k, params, ..., history = NULL) {
+    if (!is.null(history)) {
+      per_event <- .history_perps(history)
+      start(params, if (length(per_event$t)) per_event$t[1] else t_k)
+      index <- integer(0)
+      for (k in seq_along(per_event$t)) {
+        old <- per_event$old[[k]]
+        new <- per_event$new[[k]]
+        attach_sim_observe(sim, per_event$t[k], unname(index[old]) - 1L, length(new))
+        index[new] <- length(perp_ids) + seq_along(new)
+        perp_ids <<- c(perp_ids, new)
+      }
+      id_prefix <<- "s"
+      return(invisible(NULL))
+    }
+    if (is.null(sim)) start(params, t_k)
     r <- attach_sim_step(sim, t_k)
 
-    new_ids <- as.character(n_ids + seq_len(1L + r$n_new))
+    new_ids <- paste0(id_prefix, n_ids + seq_len(1L + r$n_new))
     n_ids <<- n_ids + 1L + r$n_new
     event_id <- new_ids[1L]
     new_perps <- new_ids[-1L]
@@ -358,4 +379,27 @@ compile_logpmf_attach <- function(events, spec) {
                          stringsAsFactors = FALSE)
     )
   }
+}
+
+# Internal: for each event of a bipartite history, in time order, its time,
+# its old perps (seen at an earlier event) and its new perps.
+.history_perps <- function(ev) {
+  roles <- stats::setNames(ev$nodes$role, as.character(ev$nodes$id))
+  if (is.null(ev$nodes$role) || !all(c("event", "perp") %in% roles)) {
+    stop("A history needs node roles \"event\" and \"perp\".", call. = FALSE)
+  }
+  born <- stats::setNames(ev$nodes$event_id, as.character(ev$nodes$id))
+  e <- ev$edges
+  ei <- as.character(e$i)
+  ej <- as.character(e$j)
+  perp <- ifelse(roles[ei] == "perp", ei, ej)
+  by_event <- split(perp, factor(e$event_id, levels = ev$times$event_id))
+  old <- new <- vector("list", nrow(ev$times))
+  for (k in seq_len(nrow(ev$times))) {
+    p <- unique(by_event[[k]])
+    is_new <- born[p] == ev$times$event_id[k]
+    old[[k]] <- p[!is_new]
+    new[[k]] <- p[is_new]
+  }
+  list(t = ev$times$t, old = old, new = new)
 }

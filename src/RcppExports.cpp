@@ -46,6 +46,19 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// attach_sim_observe
+void attach_sim_observe(SEXP ptr, double t, IntegerVector joined, int n_new);
+RcppExport SEXP _ppnet_attach_sim_observe(SEXP ptrSEXP, SEXP tSEXP, SEXP joinedSEXP, SEXP n_newSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type ptr(ptrSEXP);
+    Rcpp::traits::input_parameter< double >::type t(tSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type joined(joinedSEXP);
+    Rcpp::traits::input_parameter< int >::type n_new(n_newSEXP);
+    attach_sim_observe(ptr, t, joined, n_new);
+    return R_NilValue;
+END_RCPP
+}
 // attach_history_cpp
 List attach_history_cpp(NumericVector t, IntegerVector node_ptr, IntegerVector edge_ptr, IntegerVector edge_i, IntegerVector edge_j, IntegerVector focal, int n_nodes, double window, bool cycles, double gap);
 RcppExport SEXP _ppnet_attach_history_cpp(SEXP tSEXP, SEXP node_ptrSEXP, SEXP edge_ptrSEXP, SEXP edge_iSEXP, SEXP edge_jSEXP, SEXP focalSEXP, SEXP n_nodesSEXP, SEXP windowSEXP, SEXP cyclesSEXP, SEXP gapSEXP) {
@@ -203,6 +216,7 @@ END_RCPP
 static const R_CallMethodDef CallEntries[] = {
     {"_ppnet_attach_sim_new", (DL_FUNC) &_ppnet_attach_sim_new, 14},
     {"_ppnet_attach_sim_step", (DL_FUNC) &_ppnet_attach_sim_step, 2},
+    {"_ppnet_attach_sim_observe", (DL_FUNC) &_ppnet_attach_sim_observe, 4},
     {"_ppnet_attach_history_cpp", (DL_FUNC) &_ppnet_attach_history_cpp, 10},
     {"_ppnet_attach_ll_cpp", (DL_FUNC) &_ppnet_attach_ll_cpp, 23},
     {"_ppnet_mark_ll_attach_cpp", (DL_FUNC) &_ppnet_mark_ll_attach_cpp, 11},

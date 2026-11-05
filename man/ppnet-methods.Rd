@@ -43,6 +43,7 @@
   seed = NULL,
   T_end = object$model$T_end,
   params = NULL,
+  from = c("start", "end"),
   ...
 )
 }
@@ -75,6 +76,11 @@ fit's).}
 addition to, the fitted ones. A fit of one part (\code{part = "time"} or
 \code{"marks"}) needs the other part's parameters here, e.g.
 \code{simulate(mark_fit, params = coef(time_fit))}.}
+
+\item{from}{For \code{simulate()}: \code{"start"} (default) simulates afresh over the
+fit's window; \code{"end"} simulates on from the end of the observed data up to
+\code{T_end} (which must then be given), with the data as the history (see
+\code{history} in \code{\link[=sim_hawkesNet]{sim_hawkesNet()}}), e.g. to forecast or to check the fit.}
 }
 \value{
 \code{coef()}: named vector of estimates. \code{vcov()}: covariance matrix,
@@ -82,7 +88,9 @@ with attribute \code{"type"}. \code{confint()}: matrix of lower and upper limits
 \code{summary()}: an object of class \code{"summary.ppnet_fit"} with a coefficient
 table. \code{logLik()}: a \code{"logLik"} object. \code{anova()}: the table from
 \code{\link[=compare_fits]{compare_fits()}}. \code{simulate()}: a list of \code{nsim} events objects, with
-attribute \code{"seed"}.
+attributes \code{"seed"}, \code{"exploded"} (one per simulation; see \code{max_events}
+and \code{max_seconds} in \code{\link[=sim_hawkesNet]{sim_hawkesNet()}}, which can be passed through \code{...})
+and \code{"history_end"} (with \code{from = "end"} or a \code{burn_in}).
 }
 \description{
 Methods for fits from \code{\link[=fit_hawkesNet]{fit_hawkesNet()}}, in the style of \code{\link[stats:glm]{stats::glm()}}:

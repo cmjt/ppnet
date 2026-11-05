@@ -48,12 +48,12 @@ and `loglik(..., part = "marks")` return them separately and
 is their sum. hawkesNet evaluates the product $\lambda_g q$ at each event
 and fits both parts together.
 
-**What counts as an event.** In ppnet an event is a recorded event (an event
-node in the bipartite data, or one arriving node in the unipartite data);
-two events at the same time are two events, and the later one in the data
-order sees the earlier one in its history. In hawkesNet an event is a
-distinct time at which nodes or edges appear (`get_times()`), so updates at
-the same time are merged into one event.
+**What counts as an event.** In both packages an event is a distinct time
+at which nodes or edges appear: ppnet's `make_events()`, like hawkesNet's
+`get_times()`, puts everything recorded at the same time into one event. In
+ppnet's bipartite models each event must then have exactly one event node,
+so records at identical times give a log-likelihood of $-\infty$ and have to
+be separated (e.g. by a small offset) before fitting.
 
 ## 2. The time part
 
@@ -332,7 +332,7 @@ terms, and their analytic gradients against finite differences.
 
 | | Paper | hawkesNet (`main`) | ppnet |
 |---|---|---|---|
-| Event | update time | distinct time (ties merged) | recorded event (ties kept) |
+| Event | update time | distinct time (ties merged) | distinct time (bipartite: one event node each, so ties must be separated) |
 | Ground rate | $\lambda_\emptyset + K\sum e^{-\beta\Delta}$ (eq. 17), marks allowed (eq. 16) | eq. 17; or KDE background | eq. 17, plus log-linear seasonal/trend baseline, fast second kernel, size/connectedness jumps, path-dependent jumps |
 | Compensator | closed form | closed form, window assumed to start at 0 | closed form (quadrature for the baseline) |
 | BA mark | Poisson($m$) edges $\times$ normalised degree-decay Bernoullis | as paper; decay from birth; truncation; uncapped Poisson | `"ba"`: normalised $(2d+\delta)$-decay Bernoullis, no $m$ |

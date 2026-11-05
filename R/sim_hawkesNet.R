@@ -32,14 +32,36 @@
 #' @param return_net Logical; also return the final `network` object. With
 #'   `attachment` it is built once at the end, which is slow for long
 #'   histories, so set `FALSE` when only `ev` is needed.
+#' @param history Optional events object (bipartite, as from [make_events()]
+#'   or a fit's `events`) to simulate on from: the simulation starts at `T0`
+#'   (by default the last history time) with the history's events in the
+#'   intensity and its perps, attendance and co-offending in the mark state,
+#'   so it continues the observed process (for forecasts and goodness-of-fit
+#'   checks). The returned `ev` holds the history followed by the simulated
+#'   events, whose node ids start with `"s"` (attachment model). With a
+#'   random effect, the history perps' effects are drawn from their
+#'   distribution, not conditioned on their history.
+#' @param burn_in Length of a burn-in before `T0`: the simulation starts at
+#'   `T0 - burn_in` with nothing before it, and the events before `T0` are
+#'   returned as the history, so the process at `T0` is not starting from
+#'   empty. Not with `history`.
+#' @param max_events,max_seconds Stop the simulation when it has simulated
+#'   this many events (after any history) or run this long, e.g. for a model
+#'   that explodes. The output then has `exploded = TRUE` and `stop` saying
+#'   which limit was reached, and holds the events up to that point.
 #' @param verbose Logical; if `TRUE`, report the simulation time with
 #'   [message()].
 #' @param ... Passed to the mark simulator (e.g. `formula_rhs` for the CS
 #'   mark types).
 #'
-#' @return A list with `events` (the number of events `n` and their times
-#'   `t`), `accept_probs` (thinning acceptance probabilities), `ev` (an events
-#'   object, if `return_ev`) and `net` (the final network, if `return_net`).
+#' @return A list with `events` (the number `n` and times `t` of the
+#'   simulated events after any history or burn-in), `accept_probs` (thinning
+#'   acceptance probabilities), `ev` (an events object with any history and the
+#'   simulated events, if `return_ev`), `net` (the final network, if
+#'   `return_net`), `history_end` and `n_history` (the time the history or
+#'   burn-in ends and its number of events; `NULL` and 0 without one),
+#'   `stop` (`"T_end"`, `"max_events"` or `"max_seconds"`), `exploded`
+#'   (`TRUE` unless `T_end` was reached) and `t_stop` (the time reached).
 #'   [simulate()] on a fit calls this with the fitted parameters.
 #' @export
 #'
@@ -61,10 +83,34 @@ sim_hawkesNet <- function(
     kernel = c("exp", "exp2"),
     random_effect_shape = Inf,
     return_net = TRUE,
+    history = NULL,
+    burn_in = 0,
+    max_events = 1e6,
+    max_seconds = Inf,
     verbose = FALSE,
     ...
 ) {
   start_time <- proc.time()
+  stopifnot(is.numeric(burn_in), length(burn_in) == 1L, burn_in >= 0,
+            is.numeric(max_events), max_events >= 1, is.numeric(max_seconds), max_seconds > 0)
+
+  # A history (observed events) or a burn-in comes before T0; the simulation
+  # proper starts at T0 and its own events are those after the history.
+  history_end <- NULL
+  if (!is.null(history)) {
+    if (burn_in > 0) stop("Give either `history` or `burn_in`, not both.", call. = FALSE)
+    if (!inherits(history, "events")) stop("`history` must be an events object.", call. = FALSE)
+    if (!mark_type %in% c("ba_bip", "cs_bip")) {
+      stop("`history` needs a bipartite mark_type ('ba_bip' or 'cs_bip').", call. = FALSE)
+    }
+    t_hist_max <- max(history$times$t)
+    if (missing(T0)) T0 <- t_hist_max
+    if (T0 < t_hist_max) stop("`T0` must be at or after the last history event.", call. = FALSE)
+    history_end <- T0
+  } else if (burn_in > 0) {
+    history_end <- T0
+    T0 <- T0 - burn_in
+  }
 
   mu <- params$mu
   K <- params$K
@@ -138,9 +184,6 @@ sim_hawkesNet <- function(
     cs_model_cache <- list(rhs = NULL, model = NULL)
   }
 
-  net <- net_init_fun()
-  cache <- time_cache_init(T0 = T0)
-
   t <- T0
 
   # Grown by doubling: appending with c() each iteration is quadratic.
@@ -151,14 +194,68 @@ sim_hawkesNet <- function(
   grow <- function(x, n) if (n > length(x)) c(x, numeric(length(x))) else x
   nodes_rows <- list()
   edges_rows <- list()
+  cache <- time_cache_init(T0 = T0)
+  cache_f <- time_cache_init(T0 = T0)
+  net <- NULL
+  n_history <- 0L
+
+  if (!is.null(history)) {
+    th <- history$times$t
+    n_history <- length(th)
+    events_t <- c(th, numeric(64))
+    n_events <- n_history
+    # The history's events in the intensity at T0 (its excitation jumps
+    # include, with path dependence, the later changes up to T0).
+    G <- if (is.null(excitation)) rep(1, n_history) else {
+      .excitation_jumps(excitation, .excitation_design(excitation, history), a_exc, beta)$G
+    }
+    cache$S <- sum(G * exp(-beta * (T0 - th)))
+    cache_f$S <- sum(exp(-beta_fast * (T0 - th)))
+    # Its nodes and edges, with times, start the output.
+    at <- function(event_id) th[match(event_id, history$times$event_id)]
+    nodes_rows[[1L]] <- data.frame(id = as.character(history$nodes$id),
+                                   role = as.character(history$nodes$role),
+                                   time = at(history$nodes$event_id), stringsAsFactors = FALSE)
+    edges_rows[[1L]] <- data.frame(i = as.character(history$edges$i),
+                                   j = as.character(history$edges$j),
+                                   time = at(history$edges$event_id), stringsAsFactors = FALSE)
+    if (!is.null(excitation)) {
+      hp <- .history_perps(history)
+      for (k in seq_len(n_history)) {
+        for (v in c(hp$old[[k]], hp$new[[k]])) {
+          assign(v, c(perp_history[[v]], k), envir = perp_history)
+        }
+      }
+      if (path_dep) {
+        d <- .excitation_design(excitation, history)$path
+        n_perps_ev <- c(lengths(hp$old) + lengths(hp$new), numeric(64))
+        conn_ev <- c(d$c0 + tabulate(d$upd_j + 1L, nbins = n_history), numeric(64))
+      }
+    }
+    if (!is.null(attachment)) {
+      sim_mark_fun(NULL, T0, params, history = history)
+    } else {
+      net <- create_net_from_events(history)
+    }
+  }
+  if (is.null(net)) net <- net_init_fun()
 
   # compute initial bound M = lambda(t)
-  cache <- time_cache_step(cache, t, beta = beta)
-  cache_f <- time_cache_init(T0 = T0)
   M <- intensity(cache, cache_f, mu_max)
+  stop_reason <- "T_end"
 
   while (t < T_end) {
     if (!is.finite(M) || M <= 0) break
+
+    if (n_events - n_history >= max_events) {
+      stop_reason <- "max_events"
+      break
+    }
+    if (is.finite(max_seconds) && n_props %% 256L == 0L &&
+        (proc.time() - start_time)[3] > max_seconds) {
+      stop_reason <- "max_seconds"
+      break
+    }
 
     # propose next candidate time
     dt <- stats::rexp(1, rate = M)
@@ -276,10 +373,22 @@ sim_hawkesNet <- function(
   }
 
   events_t <- events_t[seq_len(n_events)]
+  # With a burn-in, its events form the history.
+  if (is.null(history) && !is.null(history_end)) n_history <- sum(events_t < history_end)
+  sim_t <- events_t[seq_len(n_events) > n_history]
   out <- list(
-    events = list(n = n_events, t = events_t),
-    accept_probs = accept_probs[seq_len(n_props)]
+    events = list(n = length(sim_t), t = sim_t),
+    accept_probs = accept_probs[seq_len(n_props)],
+    history_end = history_end,
+    n_history = n_history,
+    stop = stop_reason,
+    exploded = stop_reason != "T_end",
+    t_stop = if (stop_reason == "T_end") T_end else t
   )
+  if (out$exploded) {
+    warning("Simulation stopped at t = ", signif(out$t_stop, 4), " (", stop_reason,
+            "): the model may be explosive.", call. = FALSE)
+  }
 
   if (return_ev || (!is.null(attachment) && return_net)) {
     nodes <- if (length(nodes_rows)) .bind_rows_fast(nodes_rows) else data.frame(id=character(0), time=numeric(0))

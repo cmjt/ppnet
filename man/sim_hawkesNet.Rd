@@ -20,6 +20,10 @@ sim_hawkesNet(
   kernel = c("exp", "exp2"),
   random_effect_shape = Inf,
   return_net = TRUE,
+  history = NULL,
+  burn_in = 0,
+  max_events = 1e+06,
+  max_seconds = Inf,
   verbose = FALSE,
   ...
 )
@@ -68,6 +72,26 @@ co-offender effect picks up.}
 \code{attachment} it is built once at the end, which is slow for long
 histories, so set \code{FALSE} when only \code{ev} is needed.}
 
+\item{history}{Optional events object (bipartite, as from \code{\link[=make_events]{make_events()}}
+or a fit's \code{events}) to simulate on from: the simulation starts at \code{T0}
+(by default the last history time) with the history's events in the
+intensity and its perps, attendance and co-offending in the mark state,
+so it continues the observed process (for forecasts and goodness-of-fit
+checks). The returned \code{ev} holds the history followed by the simulated
+events, whose node ids start with \code{"s"} (attachment model). With a
+random effect, the history perps' effects are drawn from their
+distribution, not conditioned on their history.}
+
+\item{burn_in}{Length of a burn-in before \code{T0}: the simulation starts at
+\code{T0 - burn_in} with nothing before it, and the events before \code{T0} are
+returned as the history, so the process at \code{T0} is not starting from
+empty. Not with \code{history}.}
+
+\item{max_events, max_seconds}{Stop the simulation when it has simulated
+this many events (after any history) or run this long, e.g. for a model
+that explodes. The output then has \code{exploded = TRUE} and \code{stop} saying
+which limit was reached, and holds the events up to that point.}
+
 \item{verbose}{Logical; if \code{TRUE}, report the simulation time with
 \code{\link[=message]{message()}}.}
 
@@ -75,9 +99,14 @@ histories, so set \code{FALSE} when only \code{ev} is needed.}
 mark types).}
 }
 \value{
-A list with \code{events} (the number of events \code{n} and their times
-\code{t}), \code{accept_probs} (thinning acceptance probabilities), \code{ev} (an events
-object, if \code{return_ev}) and \code{net} (the final network, if \code{return_net}).
+A list with \code{events} (the number \code{n} and times \code{t} of the
+simulated events after any history or burn-in), \code{accept_probs} (thinning
+acceptance probabilities), \code{ev} (an events object with any history and the
+simulated events, if \code{return_ev}), \code{net} (the final network, if
+\code{return_net}), \code{history_end} and \code{n_history} (the time the history or
+burn-in ends and its number of events; \code{NULL} and 0 without one),
+\code{stop} (\code{"T_end"}, \code{"max_events"} or \code{"max_seconds"}), \code{exploded}
+(\code{TRUE} unless \code{T_end} was reached) and \code{t_stop} (the time reached).
 \code{\link[=simulate]{simulate()}} on a fit calls this with the fitted parameters.
 }
 \description{

@@ -66,6 +66,10 @@
 #'   seed, as for [stats::simulate()].
 #' @param T_end For `simulate()`: end of the simulation window (default: the
 #'   fit's).
+#' @param from For `simulate()`: `"start"` (default) simulates afresh over the
+#'   fit's window; `"end"` simulates on from the end of the observed data up to
+#'   `T_end` (which must then be given), with the data as the history (see
+#'   `history` in [sim_hawkesNet()]), e.g. to forecast or to check the fit.
 #' @param params For `simulate()`: parameters to use in place of, or in
 #'   addition to, the fitted ones. A fit of one part (`part = "time"` or
 #'   `"marks"`) needs the other part's parameters here, e.g.
@@ -79,7 +83,9 @@
 #'   `summary()`: an object of class `"summary.ppnet_fit"` with a coefficient
 #'   table. `logLik()`: a `"logLik"` object. `anova()`: the table from
 #'   [compare_fits()]. `simulate()`: a list of `nsim` events objects, with
-#'   attribute `"seed"`.
+#'   attributes `"seed"`, `"exploded"` (one per simulation; see `max_events`
+#'   and `max_seconds` in [sim_hawkesNet()], which can be passed through `...`)
+#'   and `"history_end"` (with `from = "end"` or a `burn_in`).
 #'
 #' @examples
 #' set.seed(1)
@@ -244,7 +250,11 @@ anova.ppnet_fit <- function(object, ...) {
 #' @rdname ppnet-methods
 #' @export
 simulate.ppnet_fit <- function(object, nsim = 1, seed = NULL, T_end = object$model$T_end,
-                               params = NULL, ...) {
+                               params = NULL, from = c("start", "end"), ...) {
+  from <- match.arg(from)
+  if (from == "end" && missing(T_end)) {
+    stop("With from = \"end\", give `T_end`, the time to simulate up to.", call. = FALSE)
+  }
   # A one-part fit has only that part's parameters: the others come from `params`.
   p <- utils::modifyList(object$par, as.list(params %||% list()))
   m <- object$model
@@ -279,7 +289,16 @@ simulate.ppnet_fit <- function(object, nsim = 1, seed = NULL, T_end = object$mod
                  attachment = m$attachment, kernel = m$kernel, return_net = FALSE),
             if (!is.null(m$formula_rhs)) list(formula_rhs = m$formula_rhs),
             list(...))
-  out <- lapply(seq_len(nsim), function(i) do.call(sim_hawkesNet, args)$ev)
+  if (from == "end") {
+    # The observation window ends at the fit's T_end (no events after the
+    # last one until then), so the continuation starts there.
+    args$history <- object$events
+    args$T0 <- m$T_end
+  }
+  sims <- lapply(seq_len(nsim), function(i) do.call(sim_hawkesNet, args))
+  out <- lapply(sims, `[[`, "ev")
   attr(out, "seed") <- RNGstate
+  attr(out, "exploded") <- vapply(sims, `[[`, logical(1), "exploded")
+  attr(out, "history_end") <- sims[[1]]$history_end
   out
 }
